@@ -1,7 +1,15 @@
 import atexit
+from itertools import izip_longest
 
 from Adafruit_MotorHAT import Adafruit_MotorHAT as MotorHAT
 
+def sgn(a):
+    return 1 if a >= 0 else -1
+
+def range_incl(a, b, abs_step_size=1):
+    step_size = abs_step_size if a <= b else -abs_step_size
+    endval = b+1 if a <= b else b-1
+    return xrange(a, endval, step_size)
 
 def turn_off_motors():
     mh = MotorHAT(addr=0x60)
@@ -25,8 +33,8 @@ def equalize_speeds(s1, s2):
 
 class MotionController(object):
 
-    LEFT_MOTOR = 3
-    RIGHT_MOTOR= 4
+    LEFT_MOTOR = 4
+    RIGHT_MOTOR= 3
 
     STEP_SIZE = 3
 
@@ -73,6 +81,16 @@ class MotionController(object):
             self.left_speed, self.right_speed
         )
         self._update_speed(new_left_speed, new_right_speed)
+
+    def stop(self):
+        speeds = izip_longest(range_incl(self.left_speed, 0, self.STEP_SIZE),
+                              range_incl(self.right_speed, 0, self.STEP_SIZE),
+                              fillvalue=0)
+        for left_speed, right_speed in speeds:
+            self._update_speed(left_speed, right_speed)
+
+    def halt(self):
+        self._update_speed(0, 0)
 
     def _update_speed(self, left_speed, right_speed):
 
