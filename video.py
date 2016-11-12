@@ -1,4 +1,5 @@
 from __future__ import print_function
+import os
 import subprocess as sp
 
 
@@ -14,12 +15,18 @@ def close_proc(proc):
 
 class VideoWriter(object):
     def __init__(self, output_filename, ffmpeg_binary=FFMPEG,
-                 overwrite_existing=False, fps=30):
+                 overwrite_existing=False, fps=30, hide_output=True):
         self.output_filename = output_filename
         self.overwrite_existing = overwrite_existing
         self.fps = fps
         self.ffmpeg_binary = ffmpeg_binary
-        self.ffmpeg_proc = sp.Popen(self.ffmpeg_command(), stdin=sp.PIPE)
+        proc_kwargs = {}
+        if hide_output:
+            devnull = open(os.devnull, "r+b")
+            proc_kwargs["stdout"] = devnull
+            proc_kwargs["stderr"] = sp.STDOUT
+        self.ffmpeg_proc = sp.Popen(self.ffmpeg_command(),
+                                    stdin=sp.PIPE, **proc_kwargs)
 
     def ffmpeg_command(self):
         command = [
