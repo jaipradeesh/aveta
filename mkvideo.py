@@ -22,7 +22,10 @@ FFMPEG = "/usr/bin/avconv"
 
 if __name__ == "__main__":
     camera = get_camera()
-    videowriter = VideoWriter("output.avi", FFMPEG)
+    videowriter = VideoWriter("output.avi", FFMPEG, extra_options=[
+        "-vf",
+        "drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf: text='%{localtime:%T}': fontcolor=white@0.8: x=7: y=700",
+    ])
     atexit.register(videowriter.close)
 
     raw_capture = PiRGBArray(camera)

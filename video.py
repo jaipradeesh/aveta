@@ -3,7 +3,7 @@ import os
 import subprocess as sp
 
 
-FFMPEG = "/usr/bin/ffmpeg"
+FFMPEG = "/usr/bin/avconv"
 
 
 def close_proc(proc):
@@ -15,7 +15,8 @@ def close_proc(proc):
 
 class VideoWriter(object):
     def __init__(self, output_filename, ffmpeg_binary=FFMPEG,
-                 overwrite_existing=False, fps=30, hide_output=True):
+                 overwrite_existing=False, fps=30, hide_output=True,
+                 ffmpeg_options=None):
         self.output_filename = output_filename
         self.overwrite_existing = overwrite_existing
         self.fps = fps
@@ -28,7 +29,7 @@ class VideoWriter(object):
         self.ffmpeg_proc = sp.Popen(self.ffmpeg_command(),
                                     stdin=sp.PIPE, **proc_kwargs)
 
-    def ffmpeg_command(self):
+    def ffmpeg_command(self, extra_options=None):
         command = [
             self.ffmpeg_binary,
             "-f", "rawvideo",
@@ -41,6 +42,8 @@ class VideoWriter(object):
             "-r", str(self.fps),
             self.output_filename,
         ]
+        if extra_options is not None:
+            command.extend(extra_options)
         return command
 
     def write_frame(self, frame):
