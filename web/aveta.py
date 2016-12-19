@@ -1,59 +1,30 @@
 import os
+import sys
 import json
+import atexit
+import multiprocessing as mp
+
+import cv2
+
+
 from flask import (
     Flask, request, session, g, redirect, url_for, abort, render_template, Response, jsonify
 )
-from camera import VideoCamera
 from flask_socketio import SocketIO, send, emit
-from Adafruit_MotorHAT import Adafruit_MotorHAT as motors
 
+sys.path.append("..")
+
+import streaming
+import streaming_plugins
+from motion import MotionController
+from video import VideoWriter
+import cam
 
 import eventlet
 eventlet.monkey_patch()
 
-
-def turnOffMotors():
-    mh.getMotor(1).run(Adafruit_MotorHAT.RELEASE)
-    mh.getMotor(2).run(Adafruit_MotorHAT.RELEASE)
-    mh.getMotor(3).run(Adafruit_MotorHAT.RELEASE)
-    mh.getMotor(4).run(Adafruit_MotorHAT.RELEASE)
-
-
-# To release all motors cleanly when we exit.
-atexit.register(turnOffMotors)
-
-
-wheel_motors = {
-    "left": 3,
-    "right": 4,
-}
-
-
-speed_step = 3
-
-
-
-
-def change_speed(left_speed, right_speed):
-    return (clamp_speed(left_speed + speed_step),
-            clamp_speed(right_speed + speed_step))
-
-
-def forward():
-    left_speed, right_speed =\
-            change_speed(left_speed, right_speed)
-
-
-def backward():
-    pass
-
-
-left_speed, right_speed = 0, 0
-
-
 app = Flask(__name__)
 app.config.from_object(__name__)
-
 
 app.config.update(dict(
     SECRET_KEY="%%rR8=_36Ptxt6zQMR`j",
@@ -61,28 +32,48 @@ app.config.update(dict(
     PASSWORD="default",
 ))
 
+motionctl = MotionController()
+
+def start_preview_process():
+    streamer = streaming.Streamer(plugins=streaming_plugins.plugins,
+                                  output_root="/home/pi/aveta/stream")
+    proc = mp.Process(target=streamer.run)
+    def shutdown():
+        pid = proc.pid()
+        proc.terminate()
+        try:
+            os.kill(pid, 0)
+            proc.kill()
+            print("Force stopped stream.py")
+        except OSError:
+            print("streaming process terminated gracefully.")
+    atexit.register(shutdown)
+    print("Starting preview process.")
+    proc.start()
+
 
 @app.route("/steer/<direction>")
 def steer(direction):
     print("Direction {} pushed.".format(direction))
     return jsonify({"success": True})
 
+
 @app.route("/")
 def home():
     return render_template("index.html")
 
 
-def gen(camera):
+def video_stream():
     while True:
-        frame = camera.get_frame()
-        yield(b'--frame\r\nContent-Type: image/jpeg\r\n\n' + frame + b'\r\n\n')
+        with open("../stream/simple.jpeg", "rb") as fp:
+            data = fp.read()
+        yield(b'--frame\r\nContent-Type: image/jpeg\r\n\n' + data + b'\r\n\n')
 
 
-@app.route("/video_feed")
+@app.route("/videofeed")
 def video_feed():
-    return Response(gen(VideoCamera()),
+    return Response(video_stream(),
                     mimetype="multipart/x-mixed-replace;boundary=frame")
-
 
 socketio = SocketIO(app)
 
@@ -97,8 +88,20 @@ def handle_json(json_msg):
 
 
 @socketio.on("steer")
-def handle_steer(direction):
-    print("Received args: direction={}".format(direction))
+def handle_steer(data):
+    print("Received args: data={}".format(data))
+    cmd = data["cmd"]
+    if cmd == "left":
+        motionctl.turn_left()
+    elif cmd == "right":
+        motionctl.turn_right()
+    elif cmd == "up":
+        motionctl.speed_ahead()
+    elif cmd == "down":
+        motionctl.speed_back()
+    elif cmd == "stop":
+        motionctl.stop()
+        
 
 
 if __name__ == "__main__":

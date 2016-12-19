@@ -1,0 +1,3 @@
+- Use driving/command.py for talking to the machine.
+- Start streaming.py to start putting camera to stream/
+- Start web/aveta.py to get a webserver at :5000

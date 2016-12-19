@@ -42,7 +42,7 @@ class MotionController(object):
 
     STEP_SIZE = 3
 
-    def __init__(self, motor_hat=None):
+    def __init__(self, motor_hat=None, verbose=True):
         if motor_hat is None:
             motor_hat = MotorHAT(addr=0x60)
         self.left_motor = motor_hat.getMotor(self.LEFT_MOTOR)
@@ -55,11 +55,29 @@ class MotionController(object):
         self.left_motor.run(MotorHAT.FORWARD)
         self.right_motor.run(MotorHAT.FORWARD)
 
+        self.verbose = verbose
+
     def speed_ahead(self, steps=1):
         self._speed(steps)
 
     def speed_back(self, steps=1):
         self._speed(-steps)
+
+    def in_motion(self):
+        return self.left_speed != 0 or self.right_speed != 0
+
+    def step_towards_zero(self):
+        """Update the speeds one step towards 0."""
+        left_step = 0 if self.left_speed == 0\
+                    else -sgn(self.left_speed)
+        right_step = 0 if self.right_speed == 0\
+                     else -sgn(self.right_speed)
+        new_left_speed = clamp_speed(left_step * self.STEP_SIZE +
+                                     self.left_speed)
+        new_right_speed = clamp_speed(right_step * self.STEP_SIZE +
+                                      self.right_speed)
+        self._update_speed(new_left_speed, new_right_speed)
+
 
     def _speed(self, steps):
         new_left_speed = clamp_speed(steps * self.STEP_SIZE +
@@ -97,7 +115,14 @@ class MotionController(object):
 
     def _update_speed(self, left_speed, right_speed):
 
-        print("updating ({}, {}). Current: ({}, {})".format(left_speed, right_speed, self.left_speed, self.right_speed))
+        if self.verbose:
+            print("updating ({}, {}). Current: ({}, {})".format(left_speed, right_speed, self.left_speed, self.right_speed))
+
+        if left_speed is None:
+            left_speed = self.left_speed
+
+        if right_speed is None:
+            right_speed = self.right_speed
 
         if left_speed < 0 and self.left_speed >= 0:
             self.left_motor.setSpeed(0)

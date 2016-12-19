@@ -1,0 +1,9 @@
+This directory contains a curses based driving command program. Run command.py
+and use arrow keys for moving the machine.
+
+control.py contains the Driver class that starts another process for controlling
+the motion of the robot by actually sending it commands. command.py talks to this
+process via the Driver class' methods. Multiprocessing is necessary if we are
+to get user input, record video and send control to the robot all independent
+of each other.
+

@@ -37,9 +37,27 @@ class VideoWriter(object):
             "-s", "640x480",
             "-r", str(self.fps),
             "-i", "-",
+            "-vf", "drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:"
+                   "text='%{localtime\:%s}': fontcolor=white@1.0: x=100: y=100: "
+                   "box=1: boxcolor='black'",
             "-an",
             "-f", "avi",
             "-r", str(self.fps),
+            "-y",
+            self.output_filename,
+        ]
+        command = [
+            self.ffmpeg_binary,
+            "-f", "rawvideo",
+            "-pix_fmt", "bgr24",
+            "-s", "640x480",
+            "-i", "-",
+            "-vf", "fps=8, drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:"
+                   "text='%{localtime\:%s}': fontcolor=white@1.0: x=100: y=100: "
+                   "box=1: boxcolor='black'",
+            "-an",
+            "-f", "mp4",
+            "-y",
             self.output_filename,
         ]
         if extra_options is not None:

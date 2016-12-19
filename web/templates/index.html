@@ -1,16 +1,41 @@
 {% extends "layout.html" %}
 
 {% block body %}
-<h2>Hello</h2>
+<div id="motion-control">
+    <h2>Motion control</h2>
+    <label>
+        <input id="toggle-input-state"
+            type="checkbox"
+            value="input-state"
+            checked="checked" />
+        Toggle Aveta input state.
+    </label>
+    <div id="current-move"></div>
+    <div id="infotable">
+        <table border="1">
+            <thead><th>key</th><th>control</th></thead>
+            <tr><td>Up-Arrow</td><td>Speed ahead</td></tr>
+            <tr><td>Left-Arrow</td><td>Turn left</td></tr>
+            <tr><td>Down-Arrow</td><td>Speed backwards</td></tr>
+            <tr><td>Right-Arrow</td><td>Turn right</td></tr>
+            <tr><td>Space</td><td>Stop</td></tr>
+        </table>
+    </div>
+    <div id="preview">
+        <img src="/videofeed"/>
+    </div>
+</div>
 {% endblock %}
 
 {% block code %}
+<script type="text/javascript" src="//cdnjs.cloudflare.com/ajax/libs/socket.io/1.3.5/socket.io.min.js"></script>
 <script type="text/javascript" charset="utf-8">
     
     const KEY_LEFT_ARROW = 37;
     const KEY_UP_ARROW = 38;
     const KEY_RIGHT_ARROW = 39;
     const KEY_DOWN_ARROW = 40;
+    const KEY_SPACE = 32;
 
     const KEY_CODE_NAMES = {};
 
@@ -18,27 +43,36 @@
     KEY_CODE_NAMES[KEY_UP_ARROW]    = "up";
     KEY_CODE_NAMES[KEY_RIGHT_ARROW] = "right";
     KEY_CODE_NAMES[KEY_DOWN_ARROW]  = "down";
+    KEY_CODE_NAMES[KEY_SPACE]  = "stop";
 
-    var globalKeyPressHandler = function(e) {
-        var keyCode = e.keyCode;
-        if (keyCode == KEY_LEFT_ARROW || keyCode == KEY_UP_ARROW ||
-                keyCode == KEY_RIGHT_ARROW || keyCode == KEY_DOWN_ARROW) {
-            var keyName = KEY_CODE_NAMES[keyCode];
-            console.log(keyName + " pressed.");
-
-            $.ajax("/steer/" + keyName)
-             .done(function() {
-                 console.log("Sent " + keyName);
-             })
-             .error(function(e) {
-                 console.log("Error: " + e);
-             });
-        }
-    };
+    var enableInput = false;
 
     $(document).ready(function() {
         console.log("Document ready, setting key event listeners.");
-        document.addEventListener("keydown", globalKeyPressHandler, false);
+
+        //document.addEventListener("keydown", globalKeyPressHandler, false);
+        var socket = io.connect();
+
+        $("#toggle-input-state").change(function() {
+            enableInput = this.checked; 
+        });
+
+        document.addEventListener("keydown", function(e) {
+            var keyCode = e.keyCode;
+            console.log("got keycode " + keyCode);
+            if (!enableInput) {
+                console.log("input not enabled");
+                return;
+            }
+            if (keyCode == KEY_LEFT_ARROW || keyCode == KEY_UP_ARROW ||
+                    keyCode == KEY_RIGHT_ARROW || keyCode == KEY_DOWN_ARROW ||
+                    keyCode == KEY_SPACE) {
+                console.log("going to emit event to server.");
+                socket.emit("steer", {cmd: KEY_CODE_NAMES[e.keyCode]});
+            }
+        }, false);
+
+        enableInput = true;
     });
 
 </script>
