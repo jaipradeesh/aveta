@@ -46,11 +46,9 @@ import io
 import constants
 
 def _streamimages(host, port, quit, resolution=(640, 480), framerate=30):
-    """Stream the pi camera as fast as we can over a TCP connection using a
-    simple protocol. Each message starts with a 4 byte integer N in little
-    endian encoding that gives the length of the image frame in bytes. The
-    following N bytes then represent the jpeg encoded frame. N=0 signifies
-    end of streaming.
+    """Stream the pi camera as fast as we can over a TCP connection using the
+    simple protocol documented above.
+    
     Args:
         host, port
             Where to connect to.
