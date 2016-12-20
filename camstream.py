@@ -1,5 +1,22 @@
 """Module to stream JPEG encoded camera frames to a suitable server that
-understands the simple protocol documented in _streamimages().
+understands the simple protocol.
+
+
+Message format:
+
+               |-----|---------|----------|---------------|
+
+Represents:    |flags|timestamp|img size=N| frame bytes   |
+
+Size(bytes):      1      8            4         N
+
+Notes:
+    timestamp is encoded as a 64 bit (IEEE 754) representation of the fine
+    timestamp given by time.time()
+
+flags:
+    bit 0 (LSB): Always 0 to indicate this is a frame message.
+    bit 7 (MNB): When set, signifies end of stream.
 
 Most of this was copied from 
 
@@ -52,11 +69,11 @@ def _streamimages(host, port, quit, resolution=(640, 480), framerate=30):
             camera.resolution = resolution
             camera.framerate = framerate
             time.sleep(2)
-            start = time.time()
             stream = io.BytesIO()
             # Use the video-port for captures...
-            for foo in camera.capture_continuous(stream, 'jpeg',
-                                                 use_video_port=True):
+            for _ in camera.capture_continuous(stream, 'jpeg',
+                                               use_video_port=True):
+                ts = time.time()
                 try:
                     quit.get_nowait()
                     break
@@ -64,16 +81,15 @@ def _streamimages(host, port, quit, resolution=(640, 480), framerate=30):
                     pass
                 sz = stream.tell()
                 print("Going to send an image of size {}b".format(sz))
-                connection.write(struct.pack('<L', sz))
+                header = struct.pack("<BdL", 0x00, ts, sz)
+                connection.write(header)
                 connection.flush()
                 stream.seek(0)
                 connection.write(stream.read())
                 count += 1
-                if time.time() - start > 30:
-                    break
                 stream.seek(0)
                 stream.truncate()
-        connection.write(struct.pack('<L', 0))
+        connection.write(struct.pack('<BdL', 0x80, 0x00, 0x00)) # End
     finally:
         connection.close()
         client_socket.close()
