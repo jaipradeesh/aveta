@@ -1,12 +1,30 @@
+"""Provides a simple way of accessing camera frames on the Raspberry Pi off
+a file. This is useful when multiple processes need to access the camera.
+
+When run as a program, this program loads plugins defined in
+streaming_plugins.py, and puts the generated images in ./stream
+
+A plugin is simply an object with a `process()` method that takes an image and
+returns an image. Images are represented as numpy arrays. The output directory
+contains an image per plugin, named after the `name` property of the
+corresponding plugin object.
+
+For more control on where the images go, use the Streamer class directly.
+
+"""
 from __future__ import print_function
 import os
 import sys
 import cv2
-import cam
 import tempfile
-import streaming_plugins
-import locking
 import atexit
+import sys
+
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+import cam
+import plugins as streaming_plugins
+import locking
 
 class Streamer(object):
     def __init__(self, plugins, output_root="./stream"):
