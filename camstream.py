@@ -45,7 +45,49 @@ import picamera
 import io
 import constants
 
-def _streamimages(host, port, quit, resolution=(640, 480), framerate=30):
+def _send_inputstream(queue, connection, max_time=None, debug=False):
+    """
+    Writes control commands from a queue to a file like object. The file
+    like object written to is *not* closed on return.
+
+    Args:
+        queue
+            A multiprocessing.Queue object which yields (timestamp, command)
+            tuples.
+        connection
+            A file like object with .write() and .flush()
+        max_time
+            A time in seconds, after which the function returns even if the
+            queue has not been emptied.
+
+
+    Returns:
+        If the function quit because of exceeding `max_time` in elapsed runtime.
+
+    """
+
+    start_time = time.time()
+    while True:
+        if max_time is not None and (time.time() - start_time) > max_time:
+            if debug:
+                print("Spent more than {}s in _send_inputstream.".format(max_time))
+            return True
+        try:
+            timestamp, command = queue.get_nowait()
+            connection.write(
+                struct.pack("<BdB", 0x01, timestamp, ord(command))
+            )
+            connection.flush()
+        except Queue.Empty:
+            break
+
+    if debug:
+        print("Spent {} seconds in _send_inputstream.".format(time.time() - start_time))
+
+    return False
+
+def _streamimages(host, port, quit, input_queue, resolution=(640, 480),
+                  framerate=30):
     """Stream the pi camera as fast as we can over a TCP connection using the
     simple protocol documented above.
     
@@ -54,6 +96,8 @@ def _streamimages(host, port, quit, resolution=(640, 480), framerate=30):
             Where to connect to.
         quit
             A multiprocessing.Queue object used to signal quit.
+        input_queue
+            A multiprocessing.Queue object used to send user input.
         resolution, framerate
             picamera parameters.
 
@@ -61,7 +105,8 @@ def _streamimages(host, port, quit, resolution=(640, 480), framerate=30):
     client_socket = socket.socket()
     client_socket.connect((host, port))
     connection = client_socket.makefile('wb')
-    count = 0
+    to_send_before_quit = 30 # only check the quit queue every so frames.
+    frames_sent = 0
     try:
         with picamera.PiCamera() as camera:
             camera.resolution = resolution
@@ -72,25 +117,33 @@ def _streamimages(host, port, quit, resolution=(640, 480), framerate=30):
             for _ in camera.capture_continuous(stream, 'jpeg',
                                                use_video_port=True):
                 ts = time.time()
-                try:
-                    quit.get_nowait()
-                    break
-                except Queue.Empty:
-                    pass
+                if frames_sent and not frames_sent % to_send_before_quit:
+                    try:
+                        quit.get_nowait()
+                        break
+                    except Queue.Empty:
+                        pass
+
+                # Trusting that user input is relatively rare, empty the input
+                # queue. The impact from this needs to be measured
+                _send_inputstream(input_queue, connection)
+
                 sz = stream.tell()
-                print("Going to send an image of size {}b".format(sz))
                 header = struct.pack("<BdL", 0x00, ts, sz)
                 connection.write(header)
                 connection.flush()
                 stream.seek(0)
                 connection.write(stream.read())
-                count += 1
                 stream.seek(0)
                 stream.truncate()
+
+                frames_sent += 1
+
         connection.write(struct.pack('<BdL', 0x80, 0x00, 0x00)) # End
     finally:
         connection.close()
         client_socket.close()
+        print("Sent {} frames.".format(frames_sent))
 
 
 class CamStream(object):
@@ -102,10 +155,11 @@ class CamStream(object):
 
     def start(self):
         self._quit = mp.Queue()
+        self._input = mp.Queue()
         if self._proc is not None:
             raise ValueError("start() called on already started stream.")
         self._proc = mp.Process(target=_streamimages,
-                                args=(self.host, self.port, self._quit,))
+                                args=(self.host, self.port, self._quit, self._input))
         self._proc.start()
 
     def stop(self):
@@ -113,12 +167,18 @@ class CamStream(object):
         self._proc.join()
         self._proc = None
 
+    def send_input(self, timestamp, command):
+        self._input.put((timestamp, command))
+
 
 if __name__ == '__main__':
     stream = CamStream()
     stream.start()
+    commands = "abcdefghijklmnopqrstuvwxyz"
     print("Started")
     for i in range(10):
+        for j in range(10):
+            stream.send_input(time.time(), commands[j%len(commands)])
         time.sleep(1)
     print("Stopping")
     stream.stop()
