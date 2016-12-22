@@ -12,24 +12,26 @@ print(AVETA_DIR)
 import getch
 from control import Driver
 from video import VideoWriter
-from cam import stream_camera
+import camstream
 
 def init(outfile):
     scr = curses.initscr()
     vid = VideoWriter(outfile)
-    camstream = stream_camera()
 
     curses.noecho()
     curses.cbreak()
     scr.keypad(1)
 
+    stream = camstream.CamStream()
+
     def cleanup():
         print("Cleaning up.")
         destroy(scr)
         vid.close()
+        stream.stop()
 
     atexit.register(cleanup)
-    return scr, vid, camstream
+    return scr, vid, stream
 
 def destroy(scr):
     curses.nocbreak()
@@ -66,7 +68,8 @@ def main():
 
     drv.start_drive_mode()
 
-    scr, vid, camstream = init(outfile)
+    scr, vid, stream = init(outfile)
+    stream.start()
     curses.curs_set(False)  # No blinking cursor
     helpstr = """
 Up-Arrow: Speed up
@@ -84,13 +87,6 @@ Output video file: {}""".format(outfile)
     scr.nodelay(1) # Non-blocking user input.
 
     while True:
-        try:
-            frame = next(camstream)
-            scr.addstr("wrote frame")
-        except StopIteration:
-            break
-        vid.write_frame(frame)
-
         scr.refresh()
         h, w = scr.getmaxyx()
         c = scr.getch()
@@ -107,6 +103,7 @@ Output video file: {}""".format(outfile)
         if c in KEY_MAP:
             what = KEY_MAP[c]
             handlers[what]()
+            stream.send_input(time.time(), what)
         else:
             what = "nothing of interest"
             
