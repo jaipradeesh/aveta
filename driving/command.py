@@ -13,10 +13,16 @@ import getch
 from control import Driver
 from video import VideoWriter
 import camstream
+import logging
 
-def init(outfile):
+logging.basicConfig(filename="/var/log/aveta/camstream.log",
+                    level=logging.DEBUG,
+                    format='[%(asctime)s %(levelname)s] %(message)s',
+                    datefmt='%m/%d/%Y %I:%M:%S %p')
+
+
+def init():
     scr = curses.initscr()
-    vid = VideoWriter(outfile)
 
     curses.noecho()
     curses.cbreak()
@@ -24,14 +30,14 @@ def init(outfile):
 
     stream = camstream.CamStream()
 
+    logging.debug("Initialized camstream object")
     def cleanup():
-        print("Cleaning up.")
+        logging.debug("Cleaning up")
         destroy(scr)
-        vid.close()
         stream.stop()
 
     atexit.register(cleanup)
-    return scr, vid, stream
+    return scr, stream
 
 def destroy(scr):
     curses.nocbreak()
@@ -52,10 +58,6 @@ KEY_MAP = {
 
 def main():
     drv = Driver()
-    try:
-        outfile = sys.argv[1]
-    except IndexError:
-        outfile = "/home/pi/aveta.avi"
 
     handlers = {
         "u": drv.speed_ahead,
@@ -67,8 +69,11 @@ def main():
     }
 
     drv.start_drive_mode()
+    logging.debug("Put controller in drive mode.")
 
-    scr, vid, stream = init(outfile)
+    scr, stream = init()
+    logging.debug("Initialized streamer")
+
     stream.start()
     curses.curs_set(False)  # No blinking cursor
     helpstr = """
@@ -77,9 +82,7 @@ Dn-Arrow: Speed down
 Rt-Arrow: Turn right
 Lt-Arrow: Turn left
 SPC     : Straighten course
-h       : Halt
-
-Output video file: {}""".format(outfile)
+h       : Halt"""
 
     scr.addstr("Aveta Control", curses.A_REVERSE)
     scr.addstr(helpstr)
@@ -98,6 +101,7 @@ Output video file: {}""".format(outfile)
             scr.addstr(0, w/2, "%0.2f: no input" % (epoch,))
             continue
         if c == ord('q'):
+            logging.debug("User quit")
             break
 
         if c in KEY_MAP:
@@ -110,7 +114,9 @@ Output video file: {}""".format(outfile)
         scr.move(2, w/2)
         scr.clrtoeol()
         scr.addstr("[Last input] {}: {} pressed".format(epoch, what))
+    logging.debug("Shutting down controller")
     drv.quit()
+    logging.debug("exit")
     sys.exit(0)
 
 if __name__ == "__main__":
