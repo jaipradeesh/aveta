@@ -2,21 +2,45 @@
 understands the simple protocol.
 
 
-Message format:
+Message format
+==============
 
-               |-----|---------|----------|---------------|
+Video frame message:
 
-Represents:    |flags|timestamp|img size=N| frame bytes   |
 
-Size(bytes):      1      8            4         N
+                   |-----|---------|----------|---------------|
 
-Notes:
-    timestamp is encoded as a 64 bit (IEEE 754) representation of the fine
-    timestamp given by time.time()
+    Represents:    |flags|timestamp|img size=N| frame bytes   |
 
-flags:
-    bit 0 (LSB): Always 0 to indicate this is a frame message.
-    bit 7 (MNB): When set, signifies end of stream.
+    Size(bytes):      1      8            4         N
+
+
+    Notes:
+        timestamp is encoded as a 64 bit (IEEE 754) representation of the fine
+        timestamp given by time.time()
+
+    flags:
+        bit 0 (LSB): Always 0 to indicate this is a frame message.
+        bit 7 (MSB): When set, signifies end of stream.
+
+
+Control message:
+
+                   |-----|---------|-------|
+
+    Represents:    |flags|timestamp|cmdcode|
+
+    Size(bytes):      1      8         1
+
+
+    Notes:
+        timestamp is encoded as a 64 bit (IEEE 754) representation of the fine
+        timestamp given by time.time()
+
+    flags:
+        bit 0 (LSB): Always 1 to indicate this is a control message.
+        bit 7 (MSB): When set, signifies end of stream.
+
 
 Most of this was copied from 
 
