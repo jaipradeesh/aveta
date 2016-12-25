@@ -84,22 +84,8 @@ except ImportError:
 
 import numpy as np
 
-
-command_mapping = {None: 0, "u": 1, "l": 2, "d": 3, "r": 4, "s": 5, "h": 6}
-
-
-command_rev_mapping = {v: k for k, v in command_mapping.items()}
-
-
-command_readable_mapping = [
-    "NOP",
-    "FORWARD",
-    "LEFT",
-    "DOWN",
-    "RIGHT",
-    "STRAIGHTEN",
-    "HALT"
-]
+from common import (command_mapping, command_rev_mapping,
+                    command_readable_mapping, write_mapping)
 
 
 def parse_args():
@@ -134,8 +120,7 @@ def main(input_dir, output_dir, verbose):
         print("Mapping built, size: {} bytes".format(sys.getsizeof(mapping)))
 
     outfile = os.path.join(output_dir, "mapping.pkl")
-    with open(outfile, "wb") as out:
-        pkl.dump(mapping, out)
+    write_mapping(mapping, outfile)
 
     return 0
 
@@ -173,35 +158,6 @@ def _merge_mappings(*mappings):
         "commands": np.hstack(all_commands),
         "frame_size": img_size,
     }
-
-
-def display_mapping(mapping, img_size, random_order=False):
-    """Display mapping in an interactive window.
-
-    Open a window with a frame from the `mapping` overlaid with the command
-    corresponding to the frame in the mapping. If `random_order` is False,
-    walk sequentially through the mapping, else select randomly.
-    """
-    mapping = list(mapping)
-    def _itermapping():
-        i = 0
-        while i < len(mapping):
-            if random_order:
-                yield np.random.choice(mapping)
-            else:
-                yield mapping[i]
-            i += 1
-    win_name = "mappings"
-    win = cv2.namedWindow(win_name, cv2.WINDOW_NORMAL)
-    for frame, cmd in _itermapping():
-        read_cmd = command_readable_mapping[command_mapping[cmd]]
-        msg = "Cmd: {}".format(read_cmd)
-        img = frame.reshape(img_size)
-        cv2.putText(img, msg, (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 0))
-        cv2.imshow(win_name, frame)
-        if cv2.waitKey(0) & ord("q") == ord("q"):
-            break
-    cv2.destroyAllWindows()
 
 
 def build_mapping(video_filename, sync_filename, cmd_filename):
