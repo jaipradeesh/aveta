@@ -198,13 +198,18 @@ class CamStream(object):
 
 
 if __name__ == '__main__':
+    from random import randint
+
     stream = CamStream()
     stream.start()
     commands = "abcdefghijklmnopqrstuvwxyz"
     print("Started")
     for i in range(10):
         for j in range(10):
-            stream.send_input(time.time(), commands[j%len(commands)])
+            stream.send_input(time.time(),
+                              commands[j%len(commands)],
+                              randint(-255, 256),
+                              randint(-255, 256))
         time.sleep(1)
     print("Stopping")
     stream.stop()

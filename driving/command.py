@@ -107,9 +107,10 @@ h       : Halt"""
         if c in KEY_MAP:
             what = KEY_MAP[c]
             # Send a timestamped record of current state and input.
-            event = (time.time(), what, drv.left_speed, drv.right_speed)
+            speeds = drv.get_speeds()
+            ts = time.time()
             handlers[what]()
-            stream.send_input(*event)
+            stream.send_input(ts, what, *speeds)
         else:
             what = "nothing of interest"
             
@@ -122,4 +123,8 @@ h       : Halt"""
     sys.exit(0)
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception as e:
+        logging.error(e)
+        raise e
