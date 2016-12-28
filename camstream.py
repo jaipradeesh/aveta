@@ -12,7 +12,7 @@ Video frame message:
 
     Represents:    |flags|timestamp|img size=N| frame bytes   |
 
-    Size(bytes):      1      8            4         N
+    Size(bytes):      1      8            4         N              =N+13
 
 
     Notes:
@@ -26,11 +26,11 @@ Video frame message:
 
 Control message:
 
-                   |-----|---------|-------|
+                   |-----|---------|-------|---------|----------|
 
-    Represents:    |flags|timestamp|cmdcode|
+    Represents:    |flags|timestamp|cmdcode|leftspeed|rightspeed|
 
-    Size(bytes):      1      8         1
+    Size(bytes):      1      8         1        2         2         =14
 
 
     Notes:
@@ -76,20 +76,18 @@ def _send_inputstream(queue, connection, max_time=None, debug=False):
 
     Args:
         queue
-            A multiprocessing.Queue object which yields (timestamp, command)
-            tuples.
+            A multiprocessing.Queue object which yields (timestamp, command,
+            left_speed, right_speed) tuples.
         connection
             A file like object with .write() and .flush()
         max_time
             A time in seconds, after which the function returns even if the
             queue has not been emptied.
 
-
     Returns:
         If the function quit because of exceeding `max_time` in elapsed runtime.
 
     """
-
     start_time = time.time()
     while True:
         if max_time is not None and (time.time() - start_time) > max_time:
@@ -97,9 +95,13 @@ def _send_inputstream(queue, connection, max_time=None, debug=False):
                 print("Spent more than {}s in _send_inputstream.".format(max_time))
             return True
         try:
-            timestamp, command = queue.get_nowait()
+            timestamp, command, left_speed, right_speed = queue.get_nowait()
             connection.write(
-                struct.pack("<BdB", 0x01, timestamp, ord(command))
+                struct.pack("<BdBhh", 0x01,
+                            timestamp,
+                            ord(command),
+                            left_speed,
+                            right_speed)
             )
             connection.flush()
         except Queue.Empty:
@@ -191,8 +193,8 @@ class CamStream(object):
         self._proc.join()
         self._proc = None
 
-    def send_input(self, timestamp, command):
-        self._input.put((timestamp, command))
+    def send_input(self, timestamp, command, left_speed, right_speed):
+        self._input.put((timestamp, command, left_speed, right_speed))
 
 
 if __name__ == '__main__':

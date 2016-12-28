@@ -106,8 +106,10 @@ h       : Halt"""
 
         if c in KEY_MAP:
             what = KEY_MAP[c]
+            # Send a timestamped record of current state and input.
+            event = (time.time(), what, drv.left_speed, drv.right_speed)
             handlers[what]()
-            stream.send_input(time.time(), what)
+            stream.send_input(*event)
         else:
             what = "nothing of interest"
             
