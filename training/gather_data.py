@@ -75,7 +75,7 @@ import sys
 import argparse
 import os
 from collections import defaultdict
-from itertools import izip
+from itertools import izip, chain
 try:
     import cPickle as pkl
 except ImportError:
@@ -86,15 +86,6 @@ import numpy as np
 
 from common import (command_mapping, command_rev_mapping,
                     command_readable_mapping, write_mapping)
-
-
-def parse_args():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("input_dir", help="Input directory")
-    parser.add_argument("output_dir", help="Output directory")
-    parser.add_argument("--verbose", action="store_true", help="Give verbose output")
-    args = parser.parse_args()
-    return args
 
 
 def main(input_dir, output_dir, verbose):
@@ -113,7 +104,9 @@ def main(input_dir, output_dir, verbose):
         tagdir = os.path.join(input_dir, tagname)
         if not os.path.isdir(tagdir):
             continue
-        mappings.append(_process_tagdir(tagdir))
+        mapping = _process_tagdir(tagdir)
+        if mapping is not None:
+            mappings.append(mapping)
 
     mapping = _merge_mappings(*mappings)
     if verbose:
@@ -142,7 +135,7 @@ def _process_tagdir(dirname):
 
 def _merge_mappings(*mappings):
     """Return a merger of multiple mappings."""
-    if not len(mappings):
+    if not mappings:
         return None
 
     all_sizes = {mapping["frame_size"] for mapping in mappings}
@@ -151,11 +144,13 @@ def _merge_mappings(*mappings):
 
     all_frames = [mapping["frames"] for mapping in mappings]
     all_commands = [mapping["commands"] for mapping in mappings]
+    all_speeds = [mapping["speeds"] for mapping in mappings]
 
     img_size = all_sizes.pop()
     return {
         "frames": np.vstack(all_frames),
         "commands": np.hstack(all_commands),
+        "speeds": np.vstack(all_speeds),
         "frame_size": img_size,
     }
 
@@ -164,25 +159,29 @@ def build_mapping(video_filename, sync_filename, cmd_filename):
     """Build a map from video frames to corresponding user commands.
 
     Given paths to the video, sync and command files, return a dict containing
-    the frames, commands and the frame size.
+    the frames, commands, speeds, and the frame size.
     """
 
-    sync = _read_file(sync_filename, value_mapper=int)
+    sync = _read_file(sync_filename, value_mapper=lambda vs: (int(vs[0]),))
     cmds = _read_file(cmd_filename)
+
     frames = izip(weighted_iter(sync), _video_frame_iter(video_filename))
 
     img_size = None
-    ret_frames, ret_commands = [], []
-    for frame, command in _cmd_frame_iter(frames, iter(cmds)):
+    ret_frames, ret_commands, ret_speeds = [], [], []
+    for frame, command, left_speed, right_speed in _cmd_frame_iter(frames,
+                                                                   iter(cmds)):
         if img_size is None:
             img_size = frame.shape
         elif img_size != frame.shape:
             raise ValueError("frames of different sizes encountered.")
         ret_frames.append(frame.reshape(-1))
         ret_commands.append(command_mapping[command])
+        ret_speeds.append([left_speed, right_speed])
 
     return {"frames": np.array(ret_frames),
             "commands": np.array(ret_commands),
+            "speeds": np.array(ret_speeds, dtype=np.float64),
             "frame_size": img_size}
 
 
@@ -204,7 +203,7 @@ def _cmd_frame_iter(frames, cmds):
         frames: An iterator yielding (str, numpy.ndarray), or timestamped
         video frames.
 
-        cmds: An iterator yielding (str, str), or timestamped commands.
+        cmds: An iterator yielding (str, str, str, str), or timestamped commands.
 
     Returns:
         An iterator yielding (numpy.array, str), for a video frame and the
@@ -212,20 +211,24 @@ def _cmd_frame_iter(frames, cmds):
 
     NOTE: Command can be None when there was no command seen for a given frame.
     """
-    # NOTE: This assignment of "no command" to certain frames is incorrect,
+    # NOTE 1: This assignment of "no command" to certain frames is incorrect,
     # strictly speaking, since frames are classified "no command" only when
     # the command stream for a given second has been exhausted.
-    def _next(it):
+    def _next_frame(it):
         t, x = next(it)
         return (int(float(t)), x)
+
+    def _next_cmd(it):
+        t, c, l, r = next(it)
+        return (int(float(t)), c, float(l), float(r))
 
     ret = []
     read_frame, read_cmd = True, True
     while True:
         if read_frame:
-            frame_time, frame = _next(frames)
+            frame_time, frame = _next_frame(frames)
         if read_cmd:
-            cmd_time, cmd = _next(cmds)
+            cmd_time, cmd, left_speed, right_speed = _next_cmd(cmds)
 
         if cmd_time < frame_time:
             # Drop this command
@@ -233,29 +236,36 @@ def _cmd_frame_iter(frames, cmds):
             continue
         elif cmd_time > frame_time:
             read_cmd, read_frame = False, True
-            yield frame, None # No command; see note above.
+            # No command; see `NOTE 1` above.
+            yield frame, None, left_speed, right_speed
         else:
             read_frame, read_cmd = True, True
-            yield frame, cmd
+            yield frame, cmd, left_speed, right_speed
 
     for _, frame in frames:
-        yield frame, None
+        yield frame, None, left_speed, right_speed
 
 
 def _read_file(filename, value_mapper=lambda x: x):
-    """Read a file with comma separated <key,value> lines.
+    """Read a file with comma separated <key,val1,val2...> lines.
 
-    Returns a list of (key, value) tuples sorted by the key ascending. If
-    `value_mapper` is given, it is applied to the value read from the file.
+    Returns a list of (key, val1, val2..) tuples sorted by the key ascending. If
+    `value_mapper` is given, it is passed a tuple of length `num_fields-1`
+    containing the `num_fields-1` values on line.
     """
-    ret = {}
+    retmap = {}
     with open(filename) as fp:
         for line in fp:
-            key, value = line.strip().split(",")
+            split_line = line.strip().split(",")
+            key = split_line[0]
+            vals = tuple(split_line[1:])
             # For command files, there *might* be multiple commands per tick, but
             # we'll just pick the last one in the file.
-            ret[key] = value_mapper(value)
-    return sorted(ret.items(), key=lambda t: t[0])
+            retmap[key] = value_mapper(vals)
+
+    for key, vals in sorted(retmap.items(), key=lambda t: t[0]):
+        yield tuple(chain([key], vals))
+
 
 
 def weighted_iter(buckets):
@@ -263,6 +273,15 @@ def weighted_iter(buckets):
     for key, count in buckets:
         for _ in xrange(count):
             yield key
+
+
+def parse_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("input_dir", help="Input directory")
+    parser.add_argument("output_dir", help="Output directory")
+    parser.add_argument("--verbose", action="store_true", help="Give verbose output")
+    args = parser.parse_args()
+    return args
 
 
 if __name__ == "__main__":
