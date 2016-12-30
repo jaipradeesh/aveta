@@ -54,10 +54,7 @@ This script collects all video and command files -- using the sync files to matc
 commands with frames -- and writes the final training data into OUTPUT_DIR. The
 video frames are converted to grayscale before writing.
 
-Two files are written, images.pkl and labels.pkl. The former contains a numpy
-array with one flattened video frame per row, and the latter contains a numpy
-array of integers, each representing user input at the corresponding frame in
-the images array.
+The output can be a pickle file or an hdf5 file.
 
 Command codes:
 
@@ -88,7 +85,7 @@ from common import (command_mapping, command_rev_mapping,
                     command_readable_mapping, write_mapping)
 
 
-def main(input_dir, output_dir, verbose):
+def main(input_dir, output_dir, verbose, output_format="pickle"):
     if not os.path.exists(input_dir) or not os.path.isdir(input_dir):
         print("{} does not name a directory.".format(input_dir))
         return 1
@@ -112,11 +109,18 @@ def main(input_dir, output_dir, verbose):
     if verbose:
         print("Mapping built, size: {} bytes".format(sys.getsizeof(mapping)))
 
-    outfile = os.path.join(output_dir, "mapping.pkl")
-    write_mapping(mapping, outfile)
+    outfile = _output_filename(output_dir, output_format)
+    write_mapping(mapping, outfile, outformat=output_format)
 
     return 0
 
+def _output_filename(output_dir, output_format, basename="mapping"):
+    path = os.path.join(output_dir, basename)
+    extn = {
+        "hdf5": "h5",
+        "pickle": "pkl"
+    }[output_format]
+    return "{}.{}".format(path, extn)
 
 def _process_tagdir(dirname):
     """Build and return the mapping for a single tagdir."""
@@ -279,6 +283,8 @@ def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("input_dir", help="Input directory")
     parser.add_argument("output_dir", help="Output directory")
+    parser.add_argument("--format", type=str, default="pickle",
+                        choices=["pickle", "hdf5"])
     parser.add_argument("--verbose", action="store_true", help="Give verbose output")
     args = parser.parse_args()
     return args
@@ -286,4 +292,4 @@ def parse_args():
 
 if __name__ == "__main__":
     args = parse_args()
-    sys.exit(main(args.input_dir, args.output_dir, args.verbose))
+    sys.exit(main(args.input_dir, args.output_dir, args.verbose, args.format))

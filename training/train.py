@@ -16,14 +16,19 @@ from common import (command_mapping, command_rev_mapping, load_mapping,
                     command_readable_mapping)
 
 
-def main(infile):
-    mapping = load_mapping(infile)
+def main(infile, informat="pickle"):
+    mapping = load_mapping(infile, informat=informat)
 
     h, w = mapping["frame_size"]
+    print "Size: ", (h, w)
 
-    data = np.zeros(shape=(len(mapping["frames"]), w*h), dtype=np.float)
-    data[:] = mapping["frames"]
-    data /= 255.
+    m, n = mapping["frames"].shape
+
+    data = np.zeros(shape=(m, n+2), # n+2 -> 2 extra speed features.
+                    dtype=np.float)
+    data[:] = np.hstack([mapping["frames"], mapping["speeds"]])
+    data[:,:n] /= 255.
+    data[:,n:] /= 512.
 
     labels = np_utils.to_categorical(mapping["commands"], nb_classes=7)
 
@@ -32,7 +37,7 @@ def main(infile):
     )
 
     model = Sequential()
-    model.add(Dense(2048, input_dim=h*w, init="uniform", activation="relu"))
+    model.add(Dense(2048, input_dim=h*(w+2), init="uniform", activation="relu"))
     model.add(Dense(1024, init="uniform", activation="relu"))
     model.add(Dense(7))
     model.add(Activation("softmax"))
@@ -51,9 +56,11 @@ def main(infile):
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("infile", help="Input mapping pickle file")
+    parser.add_argument("--format", type=str, default="pickle",
+                        choices=["pickle", "hdf5"])
     return parser.parse_args()
 
 if __name__ == "__main__":
     args = parse_args()
-    sys.exit(main(args.infile))
+    sys.exit(main(args.infile, args.format))
 

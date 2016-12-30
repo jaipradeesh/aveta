@@ -19,12 +19,29 @@ try:
 except ImportError:
     import pickle as pkl
 
-def load_mapping(infile):
-    with open(infile) as fp:
-        mapping = pkl.load(fp)
-    return mapping
+def load_mapping(infile, informat="pickle"):
+    if informat == "pickle":
+        with open(infile) as fp:
+            mapping = pkl.load(fp)
+        return mapping
+    if informat == "hdf5":
+        import h5py
+        import numpy as np
+        with h5py.File(infile, "r") as hf:
+            mapping = {key: np.array(hf[key])
+                       for key in ("frames", "commands", "speeds", "frame_size")}
+        return mapping
+    raise ValueError("Cannot handle input format {}.".format(informat))
 
-def write_mapping(mapping, outfile):
-    with open(outfile, "wb") as out:
-        pkl.dump(mapping, out)
+def write_mapping(mapping, outfile, outformat="pickle"):
+    if outformat == "pickle":
+        with open(outfile, "wb") as out:
+            pkl.dump(mapping, out)
+    elif outformat == "hdf5":
+        import h5py
+        with h5py.File(outfile, "w") as hf:
+            for key in ("frames", "commands", "speeds", "frame_size"):
+                hf.create_dataset(key, data=mapping[key])
+    else:
+        raise ValueError("Cannot handle output format {}.".format(outformat))
 
