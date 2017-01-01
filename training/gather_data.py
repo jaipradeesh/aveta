@@ -50,23 +50,20 @@ An example:
             ├── sync.txt
             └── video.avi
 
-This script collects all video and command files -- using the sync files to match
-commands with frames -- and writes the final training data into OUTPUT_DIR. The
-video frames are converted to grayscale before writing.
+OUTPUT
+------
 
-The output can be a pickle file or an hdf5 file.
-
-Command codes:
-
-    0: No input
-    1: Forward
-    2: Left
-    3: Back
-    4: Right
-    5: Straighten course
-    6: Halt
+The output directory contains a subdirectory each for the 7 commands (including
+nop, code=0). Each of the command subdirectories contains frames at which the
+user gave the command in question. There's also a file called speeds.txt in each
+of the command subdirectories, which contains <frame-filename,speedleft,speedright>
+lines. E.g., the entry ('foo.jpeg', 23, 42) means that the speeds of the left
+and the right wheels when the frame in foo.jpeg was recorded was 23 and 42,
+respectively. The speed values range from -255 to 255 inclusive, and are
+translated to actual torque by the Adafruit motor hat library for raspberry pi.
 
 """
+import re
 import cv2
 import sys
 import argparse
@@ -82,10 +79,10 @@ except ImportError:
 import numpy as np
 
 from common import (command_mapping, command_rev_mapping,
-                    command_readable_mapping, write_mapping)
+                    command_readable_mapping)
 
 
-def main(input_dir, output_dir, verbose, output_format="pickle"):
+def main(input_dir, output_dir, verbose, frame_size=(100,100)):
     if not os.path.exists(input_dir) or not os.path.isdir(input_dir):
         print("{} does not name a directory.".format(input_dir))
         return 1
@@ -98,32 +95,16 @@ def main(input_dir, output_dir, verbose, output_format="pickle"):
 
     mappings = []
     for tagname in os.listdir(input_dir):
+        if tagname.startswith("."):
+            continue
         tagdir = os.path.join(input_dir, tagname)
         if not os.path.isdir(tagdir):
             continue
-        mapping = _process_tagdir(tagdir)
-        if mapping is not None:
-            mappings.append(mapping)
-
-    mapping = _merge_mappings(*mappings)
-    if verbose:
-        print("Mapping built, size: {} bytes".format(sys.getsizeof(mapping)))
-
-    outfile = _output_filename(output_dir, output_format)
-    write_mapping(mapping, outfile, outformat=output_format)
-
+        _process_tagdir(tagdir, output_dir, frame_size)
     return 0
 
-def _output_filename(output_dir, output_format, basename="mapping"):
-    path = os.path.join(output_dir, basename)
-    extn = {
-        "hdf5": "h5",
-        "pickle": "pkl"
-    }[output_format]
-    return "{}.{}".format(path, extn)
-
-def _process_tagdir(dirname):
-    """Build and return the mapping for a single tagdir."""
+def _process_tagdir(dirname, output_dir, frame_size):
+    """Process a single tagdir."""
     mappings = []
     for idx in os.listdir(dirname):
         datadir = os.path.join(dirname, idx)
@@ -133,60 +114,67 @@ def _process_tagdir(dirname):
             os.path.join(datadir, fname)
             for fname in ("video.avi", "sync.txt", "commands.txt")
         ]
-        mappings.append(build_mapping(vidfile, syncfile, cmdfile))
-    return _merge_mappings(*mappings)
+        _process_files(vidfile, syncfile, cmdfile, output_dir, frame_size)
 
 
-def _merge_mappings(*mappings):
-    """Return a merger of multiple mappings."""
-    if not mappings:
-        return None
-
-    all_sizes = {mapping["frame_size"] for mapping in mappings}
-    if len(all_sizes) != 1:
-        raise ValueError("Different frame_size mappings cannot be merged.")
-
-    all_frames = [mapping["frames"] for mapping in mappings]
-    all_commands = [mapping["commands"] for mapping in mappings]
-    all_speeds = [mapping["speeds"] for mapping in mappings]
-
-    img_size = all_sizes.pop()
-    return {
-        "frames": np.vstack(all_frames),
-        "commands": np.hstack(all_commands),
-        "speeds": np.vstack(all_speeds),
-        "frame_size": img_size,
-    }
+def _get_next_usable_integer_index(dirname, extn):
+    pat = re.compile(r'^(\d+)\.{}$'.format(extn))
+    max_num = -1
+    for name in os.listdir(dirname):
+        m = pat.match(name)
+        if m is not None:
+            max_num = max(int(m.groups()[0]), max_num)
+    return max_num + 1
 
 
-def build_mapping(video_filename, sync_filename, cmd_filename):
-    """Build a map from video frames to corresponding user commands.
+class DataWriteHelper(object):
+    def __init__(self, command_code, output_dir):
+        self._cmd_outdir = os.path.join(output_dir, str(command_code))
 
-    Given paths to the video, sync and command files, return a dict containing
-    the frames, commands, speeds, and the frame size.
-    """
+        if not os.path.exists(self._cmd_outdir):
+            os.makedirs(self._cmd_outdir)
 
+        self._speedsfile = open(os.path.join(self._cmd_outdir, "speeds.txt"),
+                                "a+b")
+        self._next_idx = _get_next_usable_integer_index(self._cmd_outdir, "jpeg")
+
+    def write(self, frame, left_speed, right_speed):
+        filename = "{}.jpeg".format(self._next_idx)
+        self._next_idx += 1
+        path = os.path.join(self._cmd_outdir, filename)
+        cv2.imwrite(path, frame)
+        self._speedsfile.write("{},{},{}\n".format(filename, left_speed,
+                                                   right_speed))
+        self._speedsfile.flush()
+
+    def close(self):
+        try:
+            self._speedsfile.close()
+        except:
+            pass
+
+
+def _process_files(video_filename, sync_filename, cmd_filename, output_dir, frame_size):
+    """Process a single set of files datafiles. `output_dir` is populated with
+    actual stuff here."""
     sync = _read_file(sync_filename, value_mapper=lambda vs: (int(vs[0]),))
     cmds = _read_file(cmd_filename)
-
     frames = izip(weighted_iter(sync), _video_frame_iter(video_filename))
 
-    img_size = None
-    ret_frames, ret_commands, ret_speeds = [], [], []
-    for frame, command, left_speed, right_speed in _cmd_frame_iter(frames,
-                                                                   iter(cmds)):
-        if img_size is None:
-            img_size = frame.shape
-        elif img_size != frame.shape:
-            raise ValueError("frames of different sizes encountered.")
-        ret_frames.append(frame.reshape(-1))
-        ret_commands.append(command_mapping[command])
-        ret_speeds.append([left_speed, right_speed])
+    writers = {command: DataWriteHelper(command, output_dir)
+               for command in range(len(command_mapping))}
 
-    return {"frames": np.array(ret_frames),
-            "commands": np.array(ret_commands),
-            "speeds": np.array(ret_speeds, dtype=np.float64),
-            "frame_size": img_size}
+    try:
+        for frame, command, left_speed, right_speed in _cmd_frame_iter(
+            frames, iter(cmds)
+        ):
+            out_frame = cv2.resize(frame, frame_size,
+                                   interpolation=cv2.INTER_AREA)
+            cmd_code = command_mapping[command]
+            writers[cmd_code].write(frame, left_speed, right_speed)
+    finally:
+        for w in writers.values():
+            w.close()
 
 
 def _video_frame_iter(video_filename):
@@ -283,8 +271,7 @@ def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("input_dir", help="Input directory")
     parser.add_argument("output_dir", help="Output directory")
-    parser.add_argument("--format", type=str, default="pickle",
-                        choices=["pickle", "hdf5"])
+    parser.add_argument("--frame_size", type=str, default="100x100")
     parser.add_argument("--verbose", action="store_true", help="Give verbose output")
     args = parser.parse_args()
     return args
@@ -292,4 +279,10 @@ def parse_args():
 
 if __name__ == "__main__":
     args = parse_args()
-    sys.exit(main(args.input_dir, args.output_dir, args.verbose, args.format))
+    try:
+        frame_w, frame_h = map(int, args.frame_size.split("x"))
+    except:
+        print("--frame_size must be of the form 'MxN', where M, N are both integers.")
+        sys.exit(1)
+    sys.exit(main(args.input_dir, args.output_dir, args.verbose,
+                  (frame_w, frame_h)))
