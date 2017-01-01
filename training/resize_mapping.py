@@ -7,19 +7,21 @@ import argparse
 import cv2
 import numpy as np
 
-from common import (command_mapping, command_rev_mapping,
+from common import (command_mapping, command_rev_mapping, load_mapping,
                     command_readable_mapping, write_mapping)
 
 def parse_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument("infile", help="Input mapping pickle file.")
+    parser.add_argument("infile", help="Input mapping file.")
     parser.add_argument("size", help="Target size, in widthxheight notation.")
-    parser.add_argument("outfile", help="Output pickle file.")
+    parser.add_argument("outfile", help="Output file.")
+    parser.add_argument("--format", choices=["hdf5", "pickle"],
+                        help="Input file format.", default="pickle")
     return parser.parse_args()
 
 
-def main(infile, size, outfile):
-    mapping = load_mapping(infile)
+def main(infile, size, outfile, fmt):
+    mapping = load_mapping(infile, informat=fmt)
 
     w, h = size
     h_orig, w_orig = mapping["frame_size"]
@@ -35,7 +37,8 @@ def main(infile, size, outfile):
 
     write_mapping({"frames": resized_frames,
                    "frame_size": (h, w),
-                   "commands": mapping["commands"]}, outfile)
+                   "speeds": mapping["speeds"],
+                   "commands": mapping["commands"]}, outfile, outformat=fmt)
 
 
 if __name__ == "__main__":
@@ -46,4 +49,4 @@ if __name__ == "__main__":
         print("Size is expected as WidthxHeight")
         sys.exit(1)
 
-    sys.exit(main(args.infile, (w, h), args.outfile))
+    sys.exit(main(args.infile, (w, h), args.outfile, args.format))
