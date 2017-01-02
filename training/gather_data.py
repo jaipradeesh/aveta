@@ -171,7 +171,7 @@ def _process_files(video_filename, sync_filename, cmd_filename, output_dir, fram
             out_frame = cv2.resize(frame, frame_size,
                                    interpolation=cv2.INTER_AREA)
             cmd_code = command_mapping[command]
-            writers[cmd_code].write(frame, left_speed, right_speed)
+            writers[cmd_code].write(out_frame, left_speed, right_speed)
     finally:
         for w in writers.values():
             w.close()
