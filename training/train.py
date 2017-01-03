@@ -1,9 +1,10 @@
+import re
 import os
 import sys
 import argparse
 
-import cv2
 import numpy as np
+from scipy import misc
 
 from keras.utils import np_utils
 from keras.models import Sequential
@@ -15,52 +16,84 @@ from sklearn.cross_validation import train_test_split
 from common import (command_mapping, command_rev_mapping, load_mapping,
                     command_readable_mapping)
 
+import vgg16
 
-def main(infile, informat="pickle"):
-    mapping = load_mapping(infile, informat=informat)
+class DataIterator(object):
+    def __init__(self, dirname, batch_size=64, resize_to=(100,100)):
+        pat = re.compile(r'^\d+\..+$')
+        label_hist = {
+            label: sum(1 for f in os.listdir(os.path.join(dirname, label)) if pat.match(f))
+            for label in os.listdir(dirname) if label.isdigit()
+        }
+        total = float(sum(label_hist.values()))
 
-    h, w = mapping["frame_size"]
-    print "Size: ", (h, w)
+        self.approx_counts = {
+            label: int(batch_size * count / total) for label, count in label_hist.items()
+        }
 
-    m, n = mapping["frames"].shape
+        self.cmd_dirs = {}
+        self.speeds = {}
+        for entry in os.listdir(dirname):
+            if not entry.isdigit():
+                continue
+            cmddir = os.path.join(dirname, entry)
+            self.cmd_dirs[entry] = cmddir
+            speedfile = os.path.join(cmddir, "speeds.txt")
+            self.speeds[entry] = {}
+            with open(speedfile) as fp:
+                for line in fp:
+                    fname, lspeed, rspeed = line.strip().split(",")
+                    self.speeds[entry][fname] = (float(lspeed)/255., float(rspeed)/255.)
 
-    data = np.zeros(shape=(m, n+2), # n+2 -> 2 extra speed features.
-                    dtype=np.float)
-    data[:] = np.hstack([mapping["frames"], mapping["speeds"]])
-    data[:,:n] /= 255.
-    data[:,n:] /= 512.
+    def _read_img(self, filename):
+        imgpath = os.path.join(self.cmd_dirs[cmdcode], filename)
+        img = misc.imread(imgpath, mode="F").reshape(-1)
+        img /= 255.
+        return img
 
-    labels = np_utils.to_categorical(mapping["commands"], nb_classes=7)
+    def _read_batch(self, filenames):
+        imgs = []
+        speeds = []
+        labels = []
+        for filename in filenames:
+            img = self._read_img(filename)
+            imgs.append(img)
+            speeds.append(np.array(self.speeds[cmdcode][filename]))
+            labels.append(int(cmdcode))
+        return imgs, speeds, labels
 
-    train_data, test_data, train_labels, test_labels = train_test_split(
-        data, labels, test_size=0.15, random_state=42
-    )
+    def iter(self):
+        while True:
+            imgs, speeds, labels = [], [], []
+            for cmdcode, count in self.approx_counts.items():
+                filenames = [np.random.choice(self.speeds[cmdcode].keys())
+                             for _ in range(count)]
+                _imgs, _speeds, _labels = self._read_batch(filenames)
+                imgs.extend(_imgs)
+                speeds.extend(_speeds)
+                labels.extend(_labels)
+            yield ([np.vstack(batch), np.vstack(speeds)],
+                   np_utils.to_categorical(labels, nb_classes=7))
 
-    model = Sequential()
-    model.add(Dense(2048, input_dim=h*(w+2), init="uniform", activation="relu"))
-    model.add(Dense(1024, init="uniform", activation="relu"))
-    model.add(Dense(7))
-    model.add(Activation("softmax"))
+def main(input_dir):
+    train_dir, test_dir, val_dir = [os.path.join(input_dir, split)
+                                    for split in ("train", "test", "valid")]
 
-    sgd = SGD(lr=0.01)
-    model.compile(loss="categorical_crossentropy", optimizer=sgd, metrics=["accuracy"])
+    batches = DataIterator(train_dir).iter()
+    val_batches = DataIterator(val_dir).iter()
 
-    model.fit(train_data, train_labels, nb_epoch=50, batch_size=128)
-
-    loss, accuracy = model.evaluate(test_data, test_labels, batch_size=128,
-                                    verbose=1)
-    print("loss={:.4f}, accuracy={:.4f}%".format(loss, accuracy * 100))
-
-
+    model = vgg16.Vgg16()
+    model.finetune(batches)
+    model.fit(batches, val_batches, nb_epoch=1)
 
 def parse_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument("infile", help="Input mapping pickle file")
-    parser.add_argument("--format", type=str, default="pickle",
-                        choices=["pickle", "hdf5"])
+    parser.add_argument("input_dir",
+                        help="Input directory, with a structure identical to "
+                             "that of the output of gather_data.py")
     return parser.parse_args()
 
 if __name__ == "__main__":
     args = parse_args()
-    sys.exit(main(args.infile, args.format))
+    sys.exit(main(args.input_dir))
 
