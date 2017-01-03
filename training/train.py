@@ -83,7 +83,7 @@ def main(input_dir):
     val_batches = DataIterator(val_dir).iter()
 
     model = vgg16.Vgg16()
-    model.finetune(batches)
+    model.finetune(nb_class=7)
     model.fit(batches, val_batches, nb_epoch=1)
 
 def parse_args():

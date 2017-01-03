@@ -94,7 +94,7 @@ class Vgg16():
         model.add(Dense(num, activation='softmax'))
         self.compile()
 
-    def finetune(self, batches):
+    def finetune(self, nb_class):
         model = self.model
         model.pop()
         for layer in model.layers: layer.trainable=False
@@ -106,7 +106,7 @@ class Vgg16():
 
         final_model = Sequential()
         final_model.add(merged)
-        final_model.add(Dense(batches.nb_class, activation='softmax'))
+        final_model.add(Dense(nb_class, activation='softmax'))
 
         self.model = final_model
         self.compile()
