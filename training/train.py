@@ -33,6 +33,7 @@ class DataIterator(object):
 
         self.cmd_dirs = {}
         self.speeds = {}
+        self.batch_size = batch_size
         for entry in os.listdir(dirname):
             if not entry.isdigit():
                 continue
@@ -84,7 +85,7 @@ def main(input_dir):
 
     model = vgg16.Vgg16()
     model.finetune(nb_class=7)
-    model.fit(batches, val_batches, nb_epoch=1)
+    model.fit(batches, val_batches, batches.batch_size, nb_epoch=1)
 
 def parse_args():
     parser = argparse.ArgumentParser()

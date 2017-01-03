@@ -122,12 +122,11 @@ class Vgg16():
                 validation_data=(val, val_labels), batch_size=batch_size)
 
 
-    def fit(self, batches, val_batches, nb_epoch=1):
-        self.model.fit_generator(batches, samples_per_epoch=batches.nb_sample, nb_epoch=nb_epoch,
-                validation_data=val_batches, nb_val_samples=val_batches.nb_sample)
-
+    def fit(self, batches, val_batches, batch_size, nb_epoch=1):
+        self.model.fit_generator(batches, samples_per_epoch=batch_size, nb_epoch=nb_epoch,
+                validation_data=val_batches, nb_val_samples=batch_size)
 
     def test(self, path, batch_size=8):
         test_batches = self.get_batches(path, shuffle=False, batch_size=batch_size, class_mode=None)
-        return test_batches, self.model.predict_generator(test_batches, test_batches.nb_sample)
+        return test_batches, self.model.predict_generator(test_batches, batch_size)
 
