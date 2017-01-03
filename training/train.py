@@ -80,7 +80,7 @@ def main(input_dir):
     train_dir, test_dir, val_dir = [os.path.join(input_dir, split)
                                     for split in ("train", "test", "valid")]
 
-    it = DataIterator(train_iter)
+    it = DataIterator(train_dir)
     batch_size = it.batch_size
     batches = it.iter()
     val_batches = DataIterator(val_dir).iter()
