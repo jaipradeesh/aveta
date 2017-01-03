@@ -80,12 +80,14 @@ def main(input_dir):
     train_dir, test_dir, val_dir = [os.path.join(input_dir, split)
                                     for split in ("train", "test", "valid")]
 
-    batches = DataIterator(train_dir).iter()
+    it = DataIterator(train_iter)
+    batch_size = it.batch_size
+    batches = it.iter()
     val_batches = DataIterator(val_dir).iter()
 
     model = vgg16.Vgg16()
     model.finetune(nb_class=7)
-    model.fit(batches, val_batches, batches.batch_size, nb_epoch=1)
+    model.fit(batches, val_batches, batch_size, nb_epoch=1)
 
 def parse_args():
     parser = argparse.ArgumentParser()
