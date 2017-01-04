@@ -69,9 +69,9 @@ class DataIterator(object):
                 cmddir = self.cmd_dirs[cmdcode]
                 cmdspeeds = self.speeds[cmdcode]
                 # List of (image_path, (left_speed, right_speed))
-                fname_speeds = map(lambda t: (os.path.join(cmddir, t[0]), t[1]),
-                                   [np.random.choice(cmdspeeds.items())
-                                    for _ in range(count)])
+                fnames = np.random.choice(cmdspeeds.keys(), size=count)
+                fname_speeds = [(os.path.join(cmddir, f), cmdspeeds[f])
+                                for f in fnames]
                 _imgs, _speeds = self._read_batch(fname_speeds)
                 imgs.extend(_imgs)
                 speeds.extend(_speeds)
