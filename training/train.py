@@ -46,33 +46,36 @@ class DataIterator(object):
                     fname, lspeed, rspeed = line.strip().split(",")
                     self.speeds[entry][fname] = (float(lspeed)/255., float(rspeed)/255.)
 
-    def _read_img(self, filename):
-        imgpath = os.path.join(self.cmd_dirs[cmdcode], filename)
+    def _read_img(self, imgpath):
         img = misc.imread(imgpath, mode="F").reshape(-1)
         img /= 255.
         return img
 
-    def _read_batch(self, filenames):
+    def _read_batch(self, mapping):
+        """Takes a list of (abs_image_path, speed_tuple) tuples."""
         imgs = []
         speeds = []
-        labels = []
-        for filename in filenames:
+        for filename, speeed_tup in filenames:
             img = self._read_img(filename)
             imgs.append(img)
-            speeds.append(np.array(self.speeds[cmdcode][filename]))
+            speeds.append(np.array(speed_tup))
             labels.append(int(cmdcode))
-        return imgs, speeds, labels
+        return imgs, speeds
 
     def iter(self):
         while True:
             imgs, speeds, labels = [], [], []
             for cmdcode, count in self.approx_counts.items():
-                filenames = [np.random.choice(self.speeds[cmdcode].keys())
-                             for _ in range(count)]
-                _imgs, _speeds, _labels = self._read_batch(filenames)
+                cmddir = self.cmd_dirs[cmdcode]
+                cmdspeeds = self.speeds[cmdcode]
+                # List of (image_path, (left_speed, right_speed))
+                fname_speeds = map(lambda t: (os.path.join(cmddir, t[0]), t[1]),
+                                   [np.random.choice(cmdspeeds.items())
+                                    for _ in range(count)])
+                _imgs, _speeds = self._read_batch(fname_speeds)
                 imgs.extend(_imgs)
                 speeds.extend(_speeds)
-                labels.extend(_labels)
+                labels.extend([cmdcode] * count)
             yield ([np.vstack(batch), np.vstack(speeds)],
                    np_utils.to_categorical(labels, nb_classes=7))
 
