@@ -82,7 +82,7 @@ from common import (command_mapping, command_rev_mapping,
                     command_readable_mapping)
 
 
-def main(input_dir, output_dir, verbose, frame_size=(100,100)):
+def main(input_dir, output_dir, verbose, frame_size=None, grayscale=False):
     if not os.path.exists(input_dir) or not os.path.isdir(input_dir):
         print("{} does not name a directory.".format(input_dir))
         return 1
@@ -100,10 +100,10 @@ def main(input_dir, output_dir, verbose, frame_size=(100,100)):
         tagdir = os.path.join(input_dir, tagname)
         if not os.path.isdir(tagdir):
             continue
-        _process_tagdir(tagdir, output_dir, frame_size)
+        _process_tagdir(tagdir, output_dir, frame_size, grayscale)
     return 0
 
-def _process_tagdir(dirname, output_dir, frame_size):
+def _process_tagdir(dirname, output_dir, frame_size, grayscale):
     """Process a single tagdir."""
     mappings = []
     for idx in os.listdir(dirname):
@@ -114,7 +114,8 @@ def _process_tagdir(dirname, output_dir, frame_size):
             os.path.join(datadir, fname)
             for fname in ("video.avi", "sync.txt", "commands.txt")
         ]
-        _process_files(vidfile, syncfile, cmdfile, output_dir, frame_size)
+        _process_files(vidfile, syncfile, cmdfile, output_dir, frame_size,
+                       grayscale)
 
 
 def _get_next_usable_integer_index(dirname, extn):
@@ -154,12 +155,14 @@ class DataWriteHelper(object):
             pass
 
 
-def _process_files(video_filename, sync_filename, cmd_filename, output_dir, frame_size):
+def _process_files(video_filename, sync_filename, cmd_filename, output_dir,
+                   frame_size, grayscale):
     """Process a single set of files datafiles. `output_dir` is populated with
     actual stuff here."""
     sync = _read_file(sync_filename, value_mapper=lambda vs: (int(vs[0]),))
     cmds = _read_file(cmd_filename)
-    frames = izip(weighted_iter(sync), _video_frame_iter(video_filename))
+    frames = izip(weighted_iter(sync), _video_frame_iter(video_filename,
+                                                         grayscale=grayscale))
 
     writers = {command: DataWriteHelper(command, output_dir)
                for command in range(len(command_mapping))}
@@ -168,16 +171,22 @@ def _process_files(video_filename, sync_filename, cmd_filename, output_dir, fram
         for frame, command, left_speed, right_speed in _cmd_frame_iter(
             frames, iter(cmds)
         ):
-            out_frame = cv2.resize(frame, frame_size,
-                                   interpolation=cv2.INTER_AREA)
+            if frame_size is not None:
+                out_frame = cv2.resize(frame, frame_size,
+                                       interpolation=cv2.INTER_AREA)
+            else:
+                out_frame = frame
             cmd_code = command_mapping[command]
             writers[cmd_code].write(out_frame, left_speed, right_speed)
     finally:
         for w in writers.values():
-            w.close()
+            try:
+                w.close()
+            except:
+                pass
 
 
-def _video_frame_iter(video_filename):
+def _video_frame_iter(video_filename, grayscale=False):
     cap = cv2.VideoCapture(video_filename)
     if cap is None:
         raise Exception("Could not read video {}".format(video_filename))
@@ -185,7 +194,8 @@ def _video_frame_iter(video_filename):
         flag, frame = cap.read()
         if not flag:
             break
-        yield cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        out = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY) if grayscale else frame
+        yield out
 
 
 def _cmd_frame_iter(frames, cmds):
@@ -259,9 +269,9 @@ def _read_file(filename, value_mapper=lambda x: x):
         yield tuple(chain([key], vals))
 
 
-
 def weighted_iter(buckets):
-    """Given a sequence of (key, count) items, return an iterator yielding keys in agreement with the counts."""
+    """Given a sequence of (key, count) items, return an iterator yielding
+    keys in agreement with the counts."""
     for key, count in buckets:
         for _ in xrange(count):
             yield key
@@ -271,18 +281,27 @@ def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("input_dir", help="Input directory")
     parser.add_argument("output_dir", help="Output directory")
-    parser.add_argument("--frame_size", type=str, default="100x100")
-    parser.add_argument("--verbose", action="store_true", help="Give verbose output")
+    parser.add_argument("--frame_size", type=str, default=None)
+    parser.add_argument("--verbose", action="store_true",
+                        help="Give verbose output")
+    parser.add_argument("--grayscale", action="store_true",
+                        help="Store grayscale images in the output. "
+                             "Default is to store colour images")
     args = parser.parse_args()
     return args
 
 
 if __name__ == "__main__":
     args = parse_args()
-    try:
-        frame_w, frame_h = map(int, args.frame_size.split("x"))
-    except:
-        print("--frame_size must be of the form 'MxN', where M, N are both integers.")
-        sys.exit(1)
-    sys.exit(main(args.input_dir, args.output_dir, args.verbose,
-                  (frame_w, frame_h)))
+    sz = None
+
+    if args.frame_size is not None:
+        try:
+            frame_w, frame_h = map(int, args.frame_size.split("x"))
+        except:
+            print("--frame_size must be of the form 'MxN', where M, N are "
+                  "both integers.")
+            sys.exit(1)
+        sz = (frame_w, frame_h)
+
+    sys.exit(main(args.input_dir, args.output_dir, args.verbose, sz))
