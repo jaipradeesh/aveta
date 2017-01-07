@@ -136,7 +136,7 @@ class DataWriteHelper(object):
             os.makedirs(self._cmd_outdir)
 
         self._speedsfile = open(os.path.join(self._cmd_outdir, "speeds.txt"),
-                                "a+b")
+                                "w+b")
         self._next_idx = _get_next_usable_integer_index(self._cmd_outdir, "jpeg")
 
     def write(self, frame, left_speed, right_speed):
