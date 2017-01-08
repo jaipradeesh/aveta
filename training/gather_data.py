@@ -68,6 +68,7 @@ import cv2
 import sys
 import argparse
 import os
+import shutil
 from collections import defaultdict
 from itertools import izip, chain
 try:
@@ -136,7 +137,7 @@ class DataWriteHelper(object):
             os.makedirs(self._cmd_outdir)
 
         self._speedsfile = open(os.path.join(self._cmd_outdir, "speeds.txt"),
-                                "w+b")
+                                "a+b")
         self._next_idx = _get_next_usable_integer_index(self._cmd_outdir, "jpeg")
 
     def write(self, frame, left_speed, right_speed):
@@ -167,6 +168,8 @@ def _process_files(video_filename, sync_filename, cmd_filename, output_dir,
     writers = {command: DataWriteHelper(command, output_dir)
                for command in range(len(command_mapping))}
 
+    _breakdown = defaultdict(int)
+
     try:
         for frame, command, left_speed, right_speed in _cmd_frame_iter(
             frames, iter(cmds)
@@ -177,13 +180,12 @@ def _process_files(video_filename, sync_filename, cmd_filename, output_dir,
             else:
                 out_frame = frame
             cmd_code = command_mapping[command]
+
+            _breakdown[command] += 1
             writers[cmd_code].write(out_frame, left_speed, right_speed)
     finally:
         for w in writers.values():
-            try:
-                w.close()
-            except:
-                pass
+            w.close()
 
 
 def _video_frame_iter(video_filename, grayscale=False):
@@ -294,7 +296,6 @@ def parse_args():
 if __name__ == "__main__":
     args = parse_args()
     sz = None
-
     if args.frame_size is not None:
         try:
             frame_w, frame_h = map(int, args.frame_size.split("x"))
@@ -304,4 +305,5 @@ if __name__ == "__main__":
             sys.exit(1)
         sz = (frame_w, frame_h)
 
+    shutil.rmtree(args.output_dir)
     sys.exit(main(args.input_dir, args.output_dir, args.verbose, sz))
