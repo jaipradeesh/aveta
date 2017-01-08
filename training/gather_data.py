@@ -69,6 +69,7 @@ import sys
 import argparse
 import os
 import shutil
+import tarfile
 from collections import defaultdict
 from itertools import izip, chain
 try:
@@ -83,7 +84,8 @@ from common import (command_mapping, command_rev_mapping,
                     command_readable_mapping)
 
 
-def main(input_dir, output_dir, verbose, frame_size=None, grayscale=False):
+def main(input_dir, output_dir, verbose, frame_size=None,
+         grayscale=False, compress=False):
     if not os.path.exists(input_dir) or not os.path.isdir(input_dir):
         print("{} does not name a directory.".format(input_dir))
         return 1
@@ -102,7 +104,20 @@ def main(input_dir, output_dir, verbose, frame_size=None, grayscale=False):
         if not os.path.isdir(tagdir):
             continue
         _process_tagdir(tagdir, output_dir, frame_size, grayscale)
+
+    if compress:
+        _compress_dir(output_dir, output_dir+".tar.gz")
+
     return 0
+
+def _compress_dir(dirname, output_path, compression="gz"):
+    try:
+        os.unlink(output_path)
+    except OSError:
+        pass
+    mode = "w:" + compression
+    with tarfile.open(output_path, mode) as tar:
+        tar.add(dirname, arcname=os.path.basename(dirname))
 
 def _process_tagdir(dirname, output_dir, frame_size, grayscale):
     """Process a single tagdir."""
@@ -289,6 +304,9 @@ def parse_args():
     parser.add_argument("--grayscale", action="store_true",
                         help="Store grayscale images in the output. "
                              "Default is to store colour images")
+    parser.add_argument("--compress", action="store_true",
+                        help="Also generate a compressed tarball of the "
+                             "output directory.")
     args = parser.parse_args()
     return args
 
@@ -304,6 +322,11 @@ if __name__ == "__main__":
                   "both integers.")
             sys.exit(1)
         sz = (frame_w, frame_h)
-
-    shutil.rmtree(args.output_dir)
-    sys.exit(main(args.input_dir, args.output_dir, args.verbose, sz))
+    try:
+        shutil.rmtree(args.output_dir)
+    except OSError:
+        pass
+    sys.exit(main(args.input_dir, args.output_dir, args.verbose,
+                  frame_size=sz,
+                  grayscale=args.grayscale,
+                  compress=args.compress))
