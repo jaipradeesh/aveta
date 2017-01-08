@@ -70,7 +70,6 @@ def _process_label(input_dir, output_dir, label, test_fraction, valid_fraction):
 
     nb_test = int(test_fraction * len(speeds))
     nb_valid = int(valid_fraction * len(speeds))
-
     for split, start, end in (("test", 0, nb_test),
                               ("valid", nb_test, nb_test+nb_valid),
                               ("train", nb_test+nb_valid, None)):
@@ -82,8 +81,7 @@ def _process_label(input_dir, output_dir, label, test_fraction, valid_fraction):
                 in_imgpath = os.path.join(input_dir, label, imgfile)
                 out_imgpath = os.path.join(split_outdir, imgfile)
                 shutil.copy(in_imgpath, out_imgpath)
-                for speedinfo in speedinfos:
-                    out_speeds.write("{}\n".format(",".join(speedinfo)))
+                out_speeds.write("{}\n".format(",".join([imgfile, lspeed, rspeed])))
         finally:
             out_speeds.close()
 
