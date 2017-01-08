@@ -95,7 +95,7 @@ class DataIterator(object):
             yield ([out_imgs, np.vstack(speeds)],
                    np_utils.to_categorical(labels, nb_classes=7))
 
-def main(input_dir):
+def main(input_dir, nb_epoch):
     train_dir, test_dir, val_dir = [os.path.join(input_dir, split)
                                     for split in ("train", "test", "valid")]
 
@@ -109,16 +109,19 @@ def main(input_dir):
 
     model = vgg16.Vgg16()
     model.finetune(nb_class=7)
-    model.fit(batches, val_batches, batch_size, it._total_samples, val_it._total_samples, nb_epoch=1)
+    model.fit(batches, val_batches, batch_size,
+              it._total_samples, val_it._total_samples, nb_epoch=nb_epoch)
 
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("input_dir",
                         help="Input directory, with a structure identical to "
                              "that of the output of gather_data.py")
+    parser.add_argument("--epochs", type=int, default=1,
+                        help="Number of training epochs")
     return parser.parse_args()
 
 if __name__ == "__main__":
     args = parse_args()
-    sys.exit(main(args.input_dir))
+    sys.exit(main(args.input_dir, args.epochs))
 
