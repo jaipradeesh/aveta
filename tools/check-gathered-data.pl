@@ -32,12 +32,15 @@ MAIN: {
 sub _show_labeldir_stats {
     my $dirname = shift;
 
-    my $total_count = 0;
+    my $total_count      = 0;
+    my $total_file_count = 0;
+
     for my $label (@labels) {
         my $path = File::Spec->catfile($dirname, $label);
         confess "$path does not name a directory." unless (-d $path);
         my $speedfile = File::Spec->catfile($path, "speeds.txt");
         confess "$speedfile does not name a file." unless (-f $speedfile);
+
         my $count = do {
             open my $in, "<:encoding(utf8)", $speedfile or
                 confess "Could not open $speedfile for reading: $!";
@@ -47,9 +50,30 @@ sub _show_labeldir_stats {
             $ctr;
         };
         $total_count += $count;
-        say "$speedfile contains $count entries.";
+
+        my $file_count = do {
+            opendir my $dh, $path or confess "Could not open directory $path: $!";
+            my $ctr = 0;
+            while (readdir $dh) {
+                next if (/^\./ ||
+                         ! -f File::Spec->catfile($path, $_) ||
+                         /^speeds\.txt$/);
+                ++$ctr;
+            }
+            closedir $dh;
+            $ctr;
+        };
+        $total_file_count += $file_count;
+
+        if ($file_count == $count) {
+            say "Label $label: $count examples in $path.";
+        } else {
+            say "Label $label: $count examples as per speedfile, ".
+                "but $file_count files in $path.";
+        }
     }
-    say "Total count (per speedfiles): $total_count.";
+    say "Total count:\n\tas per speedfiles: $total_count\n\t".
+        "images in all labeldirs: $total_file_count";
 }
 
 sub _check_labeldir_contents {
