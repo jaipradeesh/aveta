@@ -1,3 +1,8 @@
-- Use driving/command.py for talking to the machine.
-- Start streaming.py to start putting camera to stream/
-- Start web/aveta.py to get a webserver at :5000
+# Aveta
+
+Aveta is a two wheel drive robot.
+
+<img src="images/aveta-still.jpg" />
+<img src="images/aveta-spiral.jpg" />
+
+`driving/command.py` is the main control program.
