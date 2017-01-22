@@ -27,12 +27,12 @@ def parse_args():
     args = parser.parse_args()
     return args
 
-def _labelnames(input_dir):
+def labelnames(input_dir):
     labelnames = [entry for entry in os.listdir(input_dir)
                         if entry.isdigit() and
                            os.path.isdir(os.path.join(input_dir, entry))]
     return labelnames
-    
+
 
 def main(input_dir, output_dir, test_fraction, valid_fraction):
     if not os.path.exists(input_dir):
@@ -42,22 +42,22 @@ def main(input_dir, output_dir, test_fraction, valid_fraction):
     if test_fraction + valid_fraction > 1.0:
         print("test_fraction and valid_fraction must sum to at most 1.0")
         return 1
-    
-    _prepare_output_dir(input_dir, output_dir)
 
-    for labelname in _labelnames(input_dir):
+    prepare_output_dir(input_dir, output_dir)
+
+    for labelname in labelnames(input_dir):
         if _process_label(input_dir, output_dir, labelname, test_fraction,
                           valid_fraction):
             return 1
 
-def _read_speedfile(filename):
+def read_speedfile(filename):
     def _mapper(line):
         imgfile, lspeed, rspeed = line.strip().split(",")
         return imgfile, lspeed, rspeed
     with open(filename) as fp:
         lines = [_mapper(line) for line in fp]
     np.random.shuffle(lines)
-    return lines 
+    return lines
 
 def _process_label(input_dir, output_dir, label, test_fraction, valid_fraction):
     speedfile_path = os.path.join(input_dir, label, "speeds.txt")
@@ -66,7 +66,7 @@ def _process_label(input_dir, output_dir, label, test_fraction, valid_fraction):
         print("speedfile {} does not exist, quitting.".format(speedfile_path))
         return 1
 
-    speeds = _read_speedfile(speedfile_path) # this can be used like dictionary file
+    speeds = read_speedfile(speedfile_path) # this can be used like dictionary file
 
     nb_test = int(test_fraction * len(speeds))
     nb_valid = int(valid_fraction * len(speeds))
@@ -85,17 +85,17 @@ def _process_label(input_dir, output_dir, label, test_fraction, valid_fraction):
         finally:
             out_speeds.close()
 
-def _prepare_output_dir(input_dir, output_dir):
+def prepare_output_dir(input_dir, output_dir):
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
-    
-    labelnames = _labelnames(input_dir)
+
+    labels = labelnames(input_dir)
     for d in ("train", "test", "valid"):
         dirname = os.path.join(output_dir, d)
         if os.path.exists(dirname):
             shutil.rmtree(dirname)
         os.makedirs(dirname)
-        for labelname in labelnames:
+        for labelname in labels:
             os.makedirs(os.path.join(dirname, labelname))
 
 if __name__ == "__main__":
