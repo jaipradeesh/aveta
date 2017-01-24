@@ -1,11 +1,14 @@
-"""Given a command file, write a new command file with two extra columns, for
-the left and right wheel velocities. The "velocities" are estimated using
-the motion module's inner workings. To be clear, each output row is
+"""Given a command file with the following line format:
 
     <timestamp>,<command>,<left-velocity>,<right-velocity>
 
-where both velocity values represent the speed _before_ executing the command
-(which implies the velocities in the first entry in a file are always zero."""
+where both velocity values represent the speed _before_ executing the command,
+produce a new command file with the left/right wheen velocities *after* the
+command:
+
+    <timestamp>,<command>,<left-velocity>,<right-velocity>,<left-velocity-after>,<right-velocity-after>
+
+These are estimated from the inner workings of the motion module."""
 import os
 import sys
 import argparse
@@ -17,10 +20,10 @@ def read(filename):
     ret = {}
     with open(filename) as fp:
         for line in fp:
-            key, value = line.strip().split(",")
+            key, cmd, lspeed, rspeed = line.strip().split(",")
             # For command files, there *might* be multiple commands per tick, but
             # we'll just pick the last one in the file.
-            ret[key] = value
+            ret[key] = (cmd, lspeed, rspeed)
     return sorted(ret.items(), key=lambda t: t[0])
 
 
@@ -59,9 +62,15 @@ def process_file(cmdfile, outfile):
     cmds = read(cmdfile)
     velocities = [0, 0] # left, right
     with open(fname, "wb") as out:
-        for timestamp, cmd in cmds:
-            out.write("{},{},{},{}\n".format(timestamp, cmd, *velocities))
+        first_line = True
+        for timestamp, (cmd, lspeed, rspeed) in cmds:
+            if not first_line:
+                out.write(",{},{}\n".format(lspeed, rspeed))
+            else:
+                first_line = False
+            out.write("{},{},{},{}".format(timestamp, cmd, lspeed, rspeed))
             _update_velocities(cmd, velocities)
+        out.write(",0,0\n") # velocity is always zero after halting.
     shutil.move(fname, outfile)
 
 
