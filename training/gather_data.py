@@ -53,14 +53,14 @@ An example:
 OUTPUT
 ------
 
-The output directory contains a subdirectory each for the 7 commands (including
-nop, code=0). Each of the command subdirectories contains frames at which the
-user gave the command in question. There's also a file called speeds.txt in each
-of the command subdirectories, which contains <frame-filename,speedleft,speedright>
-lines. E.g., the entry ('foo.jpeg', 23, 42) means that the speeds of the left
-and the right wheels when the frame in foo.jpeg was recorded was 23 and 42,
-respectively. The speed values range from -255 to 255 inclusive, and are
-translated to actual torque by the Adafruit motor hat library for raspberry pi.
+The output directory contains all images from all drives in the input directory.
+There's also a file called speeds.txt, which contains lines of the following
+form:
+
+    <filename>,<left-speed1>,<right-speed1>,<left-speed2>,<right-speed2>
+
+The first pair of speeds is the speeds before the user control command and
+the second pair is the speeds after the command.
 
 """
 import re
@@ -85,26 +85,26 @@ from common import (command_mapping, command_rev_mapping,
 
 
 def main(input_dir, output_dir, verbose, frame_size=None,
-         grayscale=False, compress=False):
+         grayscale=False, compress=False, augment=True):
+
     if not os.path.exists(input_dir) or not os.path.isdir(input_dir):
         print("{} does not name a directory.".format(input_dir))
         return 1
 
-    if os.path.exists(output_dir) and not os.path.isdir(output_dir):
-        print("{} does not name a directory.".format(output_dir))
-        return 1
-    elif not os.path.exists(output_dir):
-        os.makedirs(output_dir)
+    if os.path.exists(output_dir):
+        shutil.rmtree(output_dir)
+    os.makedirs(output_dir)
 
     mappings = []
+    file_num = 0 # output image files start with 0.jpg
     for tagname in os.listdir(input_dir):
         if tagname.startswith("."):
             continue
         tagdir = os.path.join(input_dir, tagname)
         if not os.path.isdir(tagdir):
             continue
-        _process_tagdir(tagdir, output_dir, frame_size, grayscale)
-
+        file_num = _process_tagdir(tagdir, output_dir, frame_size, grayscale,
+                                   augment=augment, file_num=file_num)
     if compress:
         _compress_dir(output_dir, output_dir+".tar.gz")
 
@@ -119,7 +119,9 @@ def _compress_dir(dirname, output_path, compression="gz"):
     with tarfile.open(output_path, mode) as tar:
         tar.add(dirname, arcname=os.path.basename(dirname))
 
-def _process_tagdir(dirname, output_dir, frame_size, grayscale):
+
+def _process_tagdir(dirname, output_dir, frame_size, grayscale, file_num=0,
+                    augment=True):
     """Process a single tagdir."""
     mappings = []
     for idx in os.listdir(dirname):
@@ -130,77 +132,53 @@ def _process_tagdir(dirname, output_dir, frame_size, grayscale):
             os.path.join(datadir, fname)
             for fname in ("video.avi", "sync.txt", "commands.txt")
         ]
-        _process_files(vidfile, syncfile, cmdfile, output_dir, frame_size,
-                       grayscale)
-
-
-def _get_next_usable_integer_index(dirname, extn):
-    pat = re.compile(r'^(\d+)\.{}$'.format(extn))
-    max_num = -1
-    for name in os.listdir(dirname):
-        m = pat.match(name)
-        if m is not None:
-            max_num = max(int(m.groups()[0]), max_num)
-    return max_num + 1
-
-
-class DataWriteHelper(object):
-    def __init__(self, command_code, output_dir):
-        self._cmd_outdir = os.path.join(output_dir, str(command_code))
-
-        if not os.path.exists(self._cmd_outdir):
-            os.makedirs(self._cmd_outdir)
-
-        self._speedsfile = open(os.path.join(self._cmd_outdir, "speeds.txt"),
-                                "a+b")
-        self._next_idx = _get_next_usable_integer_index(self._cmd_outdir, "jpeg")
-
-    def write(self, frame, left_speed, right_speed):
-        filename = "{}.jpeg".format(self._next_idx)
-        self._next_idx += 1
-        path = os.path.join(self._cmd_outdir, filename)
-        cv2.imwrite(path, frame)
-        self._speedsfile.write("{},{},{}\n".format(filename, left_speed,
-                                                   right_speed))
-        self._speedsfile.flush()
-
-    def close(self):
-        try:
-            self._speedsfile.close()
-        except:
-            pass
+        file_num = _process_files(
+            vidfile, syncfile, cmdfile, output_dir, frame_size, grayscale,
+            augment=augment, file_num=file_num
+        )
+    return file_num
 
 
 def _process_files(video_filename, sync_filename, cmd_filename, output_dir,
-                   frame_size, grayscale):
+                   frame_size, grayscale, augment=True, file_num=0):
     """Process a single set of files datafiles. `output_dir` is populated with
-    actual stuff here."""
+    actual stuff here. Return one plus the last file number written to."""
     sync = _read_file(sync_filename, value_mapper=lambda vs: (int(vs[0]),))
     cmds = _read_file(cmd_filename)
     frames = izip(weighted_iter(sync), _video_frame_iter(video_filename,
                                                          grayscale=grayscale))
+    speedfile = os.path.join(output_dir, "speeds.txt")
 
-    writers = {command: DataWriteHelper(command, output_dir)
-               for command in range(len(command_mapping))}
+    def _write_data(speedfile_out, frame, lspeed, rspeed, lspeed_after,
+                    rspeed_after, file_num):
+        imfile = "{}.jpg".format(file_num)
+        speedfile_out.write("{},{},{},{},{}\n".format(
+            imfile, lspeed, rspeed, lspeed_after, rspeed_after
+        ))
+        cv2.imwrite(os.path.join(output_dir, imfile), frame)
 
-    _breakdown = defaultdict(int)
+    with open(speedfile, "a+b") as out:
+        for dataline in _cmd_frame_iter(frames, iter(cmds)):
+            (frame, cmd, lspeed, rspeed, lspeed_after, rspeed_after) = dataline
 
-    try:
-        for frame, command, left_speed, right_speed in _cmd_frame_iter(
-            frames, iter(cmds)
-        ):
             if frame_size is not None:
                 out_frame = cv2.resize(frame, frame_size,
                                        interpolation=cv2.INTER_AREA)
             else:
                 out_frame = frame
-            cmd_code = command_mapping[command]
 
-            _breakdown[command] += 1
-            writers[cmd_code].write(out_frame, left_speed, right_speed)
-    finally:
-        for w in writers.values():
-            w.close()
+            _write_data(out, out_frame, lspeed, rspeed, lspeed_after,
+                        rspeed_after, file_num)
+            file_num += 1
+
+            if augment:
+                _write_data(
+                    out, cv2.flip(out_frame, 1), rspeed, lspeed, rspeed_after,
+                    lspeed_after, file_num
+                )
+                file_num += 1
+
+    return file_num
 
 
 def _video_frame_iter(video_filename, grayscale=False):
@@ -222,7 +200,10 @@ def _cmd_frame_iter(frames, cmds):
         frames: An iterator yielding (str, numpy.ndarray), or timestamped
         video frames.
 
-        cmds: An iterator yielding (str, str, str, str), or timestamped commands.
+        cmds: An iterator yielding timestamped commands of the form
+
+            (<timestamp>, <command-char>, <lspeed-before>, <rspeed-before>,
+             <lspeed-after>, <rspeed-after>)
 
     Returns:
         An iterator yielding (numpy.array, str), for a video frame and the
@@ -238,8 +219,8 @@ def _cmd_frame_iter(frames, cmds):
         return (int(float(t)), x)
 
     def _next_cmd(it):
-        t, c, l, r = next(it)
-        return (int(float(t)), c, float(l), float(r))
+        t, c, l0, r0, l1, r1 = next(it)
+        return (int(float(t)), c, float(l0), float(r0), float(l1), float(r1))
 
     ret = []
     read_frame, read_cmd = True, True
@@ -247,7 +228,8 @@ def _cmd_frame_iter(frames, cmds):
         if read_frame:
             frame_time, frame = _next_frame(frames)
         if read_cmd:
-            cmd_time, cmd, left_speed, right_speed = _next_cmd(cmds)
+            (cmd_time, cmd, left_speed, right_speed, left_speed_after,
+             right_speed_after)  = _next_cmd(cmds)
 
         if cmd_time < frame_time:
             # Drop this command
@@ -256,13 +238,14 @@ def _cmd_frame_iter(frames, cmds):
         elif cmd_time > frame_time:
             read_cmd, read_frame = False, True
             # No command; see `NOTE 1` above.
-            yield frame, None, left_speed, right_speed
+            yield frame, None, left_speed, right_speed, left_speed, right_speed
         else:
             read_frame, read_cmd = True, True
-            yield frame, cmd, left_speed, right_speed
+            yield (frame, cmd, left_speed, right_speed, left_speed_after,
+                   right_speed_after)
 
     for _, frame in frames:
-        yield frame, None, left_speed, right_speed
+        yield frame, None, left_speed, right_speed, left_speed, right_speed
 
 
 def _read_file(filename, value_mapper=lambda x: x):
@@ -307,6 +290,8 @@ def parse_args():
     parser.add_argument("--compress", action="store_true",
                         help="Also generate a compressed tarball of the "
                              "output directory.")
+    parser.add_argument("--augment", action="store_true",
+                        help="Augment training data by flipping speeds and images")
     args = parser.parse_args()
     return args
 
@@ -329,4 +314,5 @@ if __name__ == "__main__":
     sys.exit(main(args.input_dir, args.output_dir, args.verbose,
                   frame_size=sz,
                   grayscale=args.grayscale,
-                  compress=args.compress))
+                  compress=args.compress,
+                  augment=args.augment))
