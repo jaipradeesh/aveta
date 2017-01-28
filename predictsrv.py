@@ -25,21 +25,7 @@ from StringIO import StringIO
 from PIL import Image
 from matplotlib import pyplot as plt
 
-
-def read_n_strict(stream, n):
-    remaining = n
-    data = []
-    while remaining:
-        fragment = stream.recv(remaining)
-        if not fragment:
-            break
-        remaining -= len(fragment)
-        data.append(fragment)
-
-    if remaining:
-        raise Exception("recv returned 0 bytes")
-
-    return ''.join(data)
+from network import read_n_strict
 
 
 def read_input_msg(stream):
