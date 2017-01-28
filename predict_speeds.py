@@ -22,12 +22,12 @@ def main(model_file, verbose):
 
         im = imread(filename, mode="RGB")
         im = imresize(im, (150, 400))
-        im = np.rollaxis(im, 2, 0).reshape(1, 3, 150, 400)
+        im = np.rollaxis(im, 2, 0)
         
-        X = [im, np.array([[float(lspeed), float(rspeed)]])]
+        X = [np.array([im, im[:]]), np.array([[float(lspeed), float(rspeed)],
+                                              [float(lspeed), float(rspeed)]])]
         y = model.predict(X)
         end = time.time()
-
         if verbose:
             print("{} (took {:0.2f}s)".format(y, end-start))
     return 0
