@@ -14,7 +14,6 @@
         bit 0 is set to indicate quitting.
 
 """
-import cv2
 import os
 import sys
 import socket
