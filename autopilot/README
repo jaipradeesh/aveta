@@ -1,0 +1,4 @@
+- predictsrv.py is the prediction server, to be run on the bastion machine.
+- autopilot.py is run on the robot, with the address to the a running prediction
+  server. It then sends images to the server over TCP, and expects speeds of
+  both wheels.  Check the code for the packet format.
