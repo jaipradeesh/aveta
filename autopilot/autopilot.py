@@ -47,6 +47,7 @@ def main(server):
                 
                 speed_bytes = read_n_strict(client_sock, struct.calcsize(infmt))
                 flags, lspeed, rspeed = struct.unpack(infmt, speed_bytes)
+                print("Received: {}".format((flags, lspeed, rspeed)))
 
                 motionctl._update_speed(lspeed, rspeed)
 
