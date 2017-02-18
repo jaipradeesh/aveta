@@ -22,7 +22,7 @@ import struct
 from os.path import dirname, abspath
 
 import numpy as np
-from scipy.misc import imresize
+from scipy.misc import imresize, imsave
 from StringIO import StringIO
 from PIL import Image
 from matplotlib import pyplot as plt
@@ -79,12 +79,15 @@ def handle_conn(conn, model):
     while True:
         try:
             img_, lspeed, rspeed = read_input_msg(conn)
-            img = imresize(img_, (150, 400))
+            img = np.flipud(img_)
+            img = img[len(img)/2:,:]
+            img = imresize(img_, (120, 160))
+            imsave("/home/ys/aveta-stream.jpg", img)
             img = np.rollaxis(img, 2, 0)
             X = [np.array([img]), np.array([[lspeed, rspeed]])]
-            lout, rout = model.predict(X).reshape(2,)
+            lout, rout = np.clip(model.predict(X).reshape(2,), 50, 255)
             print lout, rout
-            conn.sendall(struct.pack(fmt, 0x00, lout, rout))
+            conn.sendall(struct.pack(fmt, 0x00, round(lout), round(rout)))
         except StopIteration:
             return
         conn.sendall(struct.pack(fmt, 0x01, lspeed, rspeed))
