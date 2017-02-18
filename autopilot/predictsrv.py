@@ -20,6 +20,7 @@ import sys
 import socket
 import argparse
 import struct
+from os.path import dirname, abspath
 
 import numpy as np
 from scipy.misc import imresize
@@ -28,6 +29,9 @@ from PIL import Image
 from matplotlib import pyplot as plt
 from keras.models import load_model
 
+AVETA_DIR = dirname(dirname(abspath(__file__)))
+
+sys.path.append(AVETA_DIR)
 from network import read_n_strict
 
 
@@ -52,16 +56,22 @@ def read_input_msg(stream):
     return imarr, left_speed, right_speed
 
 
-model_path = "models/aveta-model.hdf5"
+def main(addr, model_path, verbose):
+    if verbose:
+        print("Loading model from {}".format(model_path))
+    model = load_model(model_path)
 
-def main(addr):
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.bind(addr)
     sock.listen(1)
 
-    model = load_model(model_path)
+    if verbose:
+        print("Listening on {}:{}".format(*addr))
+        
     while True:
         conn, cli = sock.accept()
+        if verbose:
+            print("Connection accepted ({})".format(conn))
         handle_conn(conn, model)
 
 
@@ -83,9 +93,18 @@ def handle_conn(conn, model):
 
 def parse_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument("address",
+    parser.add_argument("--address",
                         default="0.0.0.0:4000",
                         help="Address to listen on.")
+
+    model_default_path = os.path.join(AVETA_DIR, "models", "aveta-model.hdf5")
+    parser.add_argument("--model_path",
+                        default=model_default_path,
+                        help="Path to an HDF5 model containing the Keras model.")
+
+    parser.add_argument("--verbose", "-v",
+                        action="store_true",
+                        help="Print debug information.")
     return parser.parse_args()
 
 
@@ -93,4 +112,6 @@ if __name__ == "__main__":
     args = parse_args()
     host, port = args.address.split(":")
     port = int(port)
-    sys.exit(main((host, port)))
+    model_path = args.model_path
+    verbose = args.verbose
+    sys.exit(main((host, port), model_path, verbose))
