@@ -89,8 +89,8 @@ def handle_conn(conn, model):
             print lout, rout
             conn.sendall(struct.pack(fmt, 0x00, round(lout), round(rout)))
         except StopIteration:
-            return
-        conn.sendall(struct.pack(fmt, 0x01, lspeed, rspeed))
+            break
+    conn.sendall(struct.pack(fmt, 0x01, lspeed, rspeed))
 
 
 def parse_args():
