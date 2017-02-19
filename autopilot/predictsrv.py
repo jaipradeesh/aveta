@@ -76,12 +76,13 @@ def main(addr, model_path, verbose):
 
 def handle_conn(conn, model):
     fmt = "<Bhh"
+    _, chans, rows, cols = model.layers[0].input_shape
     while True:
         try:
             img_, lspeed, rspeed = read_input_msg(conn)
             img = np.flipud(img_)
             img = img[len(img)/2:,:]
-            img = imresize(img_, (120, 160))
+            img = imresize(img_, (rows, cols))
             imsave("/home/ys/aveta-stream.jpg", img)
             img = np.rollaxis(img, 2, 0)
             X = [np.array([img]), np.array([[lspeed, rspeed]])]
