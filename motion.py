@@ -1,5 +1,6 @@
 import atexit
 from itertools import izip_longest
+from util import clamp_speed, equalize_speeds
 
 from Adafruit_MotorHAT import Adafruit_MotorHAT as MotorHAT
 
@@ -21,18 +22,6 @@ def turn_off_motors():
 
 atexit.register(turn_off_motors)
 
-
-def clamp_speed(speed):
-    if speed < -255:
-        return -255
-    if speed > 255:
-        return 255
-    return speed
-
-
-def equalize_speeds(s1, s2):
-    mean = (s1 + s2) / 2
-    return mean, mean
 
 
 class MotionController(object):
