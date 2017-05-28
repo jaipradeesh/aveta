@@ -12,6 +12,8 @@ import getch
 import time
 from motion import MotionController
 
+import logging
+
 def control_main(cmd_queue, speeds, damping=False):
     """The main controller process.
 
@@ -26,6 +28,7 @@ def control_main(cmd_queue, speeds, damping=False):
         command.
     """
     ctrl = MotionController(verbose=False)
+    logging.debug('Done initializing motion controller')
     last_change = time.time()
     speeds[:] = [ctrl.left_speed, ctrl.right_speed]
     done = False
@@ -48,6 +51,7 @@ def control_main(cmd_queue, speeds, damping=False):
                 ctrl.stop()
                 done = True
             elif damping and ctrl.in_motion():
+                logging.debug('no recognized command received, decelerating since damping is active')
                 t = time.time()
                 if t-last_change > 0.1 and ctr.in_motion():
                     last_change = t

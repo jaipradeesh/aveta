@@ -5,6 +5,7 @@ import curses
 import atexit
 import multiprocessing as mp
 import time
+import argparse
 
 AVETA_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(AVETA_DIR)
@@ -15,26 +16,36 @@ from video import VideoWriter
 import camstream
 import logging
 
-logging.basicConfig(filename="/var/log/aveta/camstream.log",
+logging.basicConfig(filename="/var/log/aveta/driving_command.log",
                     level=logging.DEBUG,
                     format='[%(asctime)s %(levelname)s] %(message)s',
                     datefmt='%m/%d/%Y %I:%M:%S %p')
 
+def parse_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--nostream",
+                        action="store_true",
+                        help="Turn off image streaming")
 
-def init():
+    return parser.parse_args()
+
+def init(nostream):
     scr = curses.initscr()
 
     curses.noecho()
     curses.cbreak()
     scr.keypad(1)
 
-    stream = camstream.CamStream()
+    stream = None
+    if not nostream:
+        stream = camstream.CamStream()
 
     logging.debug("Initialized camstream object")
     def cleanup():
         logging.debug("Cleaning up")
         destroy(scr)
-        stream.stop()
+        if stream is not None:
+            stream.stop()
 
     atexit.register(cleanup)
     return scr, stream
@@ -56,7 +67,7 @@ KEY_MAP = {
 }
 
 
-def main():
+def main(nostream):
     drv = Driver()
 
     handlers = {
@@ -71,10 +82,14 @@ def main():
     drv.start_drive_mode()
     logging.debug("Put controller in drive mode.")
 
-    scr, stream = init()
-    logging.debug("Initialized streamer")
+    scr, stream = init(nostream)
+    if stream is not None:
+        logging.debug("Initialized streamer")
+    else:
+        logging.debug('--nostream was given, not streaming to bastion')
 
-    stream.start()
+    if stream is not None:
+        stream.start()
     curses.curs_set(False)  # No blinking cursor
     helpstr = """
 Up-Arrow: Speed up
@@ -110,7 +125,8 @@ h       : Halt"""
             speeds = drv.get_speeds()
             ts = time.time()
             handlers[what]()
-            stream.send_input(ts, what, *speeds)
+            if stream is not None:
+                stream.send_input(ts, what, *speeds)
         else:
             what = "nothing of interest"
             
@@ -123,8 +139,9 @@ h       : Halt"""
     sys.exit(0)
 
 if __name__ == "__main__":
+    args = parse_args()
     try:
-        main()
+        main(nostream=args.nostream)
     except Exception as e:
-        logging.error(e)
+        logging.exception("Uncaught error")
         raise e
