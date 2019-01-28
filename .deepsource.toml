@@ -5,4 +5,4 @@ name = "python"
 enabled = true
 runtime_version = "2.x.x"
 
-exclude_patterns = ["training/*"]
+exclude_patterns = ["training/"]
